@@ -1,0 +1,13 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 각진 다크 배경 -->
+  <rect x="0" y="0" width="256" height="256" fill="#020617"/>
+  <rect x="0.75" y="0.75" width="254.5" height="254.5" stroke="#1F2937" stroke-width="1.5"/>
+
+  <!-- 레이어 바 3개 (위/아래 살짝 더 밝게 + 두껍게) -->
+  <rect x="64" y="72"  width="128" height="22" rx="11" fill="#1F2937"/>
+  <rect x="64" y="117" width="128" height="22" rx="11" fill="#4F46E5"/>
+  <rect x="64" y="162" width="128" height="22" rx="11" fill="#1F2937"/>
+
+  <!-- 오른쪽 아래 포인트 점 -->
+  <circle cx="196" cy="196" r="10" fill="#7C3AED"/>
+</svg>

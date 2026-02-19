@@ -34,7 +34,7 @@
 <br/>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/092c8620-b337-4d01-813c-3a24d47945c8" alt="LayerCal Screenshot" width="900" />
+  <img src="public/screenshot.png" alt="LayerCal Screenshot" width="900" />
 </p>
 
 ---

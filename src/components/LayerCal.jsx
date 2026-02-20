@@ -10,7 +10,7 @@ import { generatePyTorchCode, generateTensorFlowCode, generateJAXCode } from '@/
 import AIAdvisor from '@/components/AIAdvisor';
 
 /**
- * LayerCal - Deep Learning Model Parameter Calculator
+ * LayerCal - Deep Learning Parameter Calculator & AI Architecture Advisor
  * 
  * 🚀 Performance Optimizations:
  * - useMemo: LAYER_TYPES, totalParams, modelSizeMB, totalFLOPs
@@ -933,7 +933,7 @@ export default function LayerCal() {
         {/* Footer */}
         <div className={`mt-6 sm:mt-8 text-center text-xs sm:text-sm space-y-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           <p className="text-[10px] sm:text-xs">{t.calculationNote}</p>
-          <p className="text-[10px] sm:text-xs">© {new Date().getFullYear()} LayerCal · <a href="https://github.com/chanjoongx/layercal" target="_blank" rel="noopener noreferrer" className="hover:underline hover:text-purple-400">GitHub</a></p>
+          <p className="text-[10px] sm:text-xs">© {new Date().getFullYear()} LayerCal. All rights reserved.</p>
         </div>
       </div>
     </div>

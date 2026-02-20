@@ -116,7 +116,7 @@ attention:
   - num_heads: one of [4, 8, 12, 16]
 
 batchnorm:
-  - num_features: one of [64, 128, 256, 512, 768, 1024]
+  - num_features: one of [16, 32, 64, 128, 256, 512, 768, 1024]
 
 layernorm:
   - normalized_shape: one of [128, 256, 512, 768, 1024]

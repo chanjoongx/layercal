@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  Browser-based deep learning model parameter calculator.<br/>
-  Drag layers, get instant parameter counts, FLOPs, memory estimates, and framework code.
+  Browser-based deep learning parameter calculator with AI Architecture Advisor.<br/>
+  Drag layers, get instant parameter counts, FLOPs, memory estimates, and framework code — or describe your model in natural language and let AI generate the architecture.
 </p>
 
 <p align="center">
@@ -58,7 +58,7 @@ Describe your model requirements in natural language — the advisor generates a
 
 **How it works:**
 
-1. Your query is matched against a knowledge base of 12 reference architectures (MobileNet, ResNet, BERT, GPT, U-Net, etc.)
+1. Your query is matched against a knowledge base of 12 reference architectures (LeNet, VGG, MobileNet, BERT, GPT, etc.)
 2. Relevant references are injected into the LLM prompt via a lightweight RAG pipeline
 3. The LLM generates a JSON layer stack
 4. A post-processing pass validates every layer, snaps parameters to legal values, and fixes cross-layer dimension mismatches automatically
@@ -110,6 +110,9 @@ src/
     ├── codeGenerator.js        # PyTorch / TensorFlow / JAX codegen
     ├── imageExport.js          # PNG export via html2canvas
     └── localStorage.js         # Safe storage + system detection
+└── __tests__/
+    ├── layerTypes.test.js      # 44 tests: params, FLOPs, memory
+    └── ragPipeline.test.js     # 41 tests: parsing, snapping, cross-layer
 ```
 
 ## Calculation Reference

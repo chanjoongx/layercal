@@ -1,7 +1,7 @@
 {
   "name": "layercal",
-  "version": "1.1.0",
-  "description": "Deep Learning Model Parameter Calculator with FLOPs/Memory Estimation and Auto Code Generation",
+  "version": "2.0.0",
+  "description": "Browser-based deep learning parameter calculator with AI Architecture Advisor — FLOPs, memory estimation, and code generation for PyTorch, TensorFlow, and JAX",
   "author": "Chanjoong Kim (https://github.com/chanjoongx)",
   "license": "MIT",
   "homepage": "https://layercal.com",

@@ -4,7 +4,7 @@ import { safeLocalStorage } from '@/utils/localStorage';
 import { generateArchitecture } from '@/utils/ragPipeline';
 
 const PROVIDERS = [
-  { id: 'gemini', name: 'Google Gemini', hint: 'Free tier: 10 req/min' },
+  { id: 'gemini', name: 'Google Gemini', hint: 'Free tier: 1,000 req/day' },
   { id: 'openai', name: 'OpenAI', hint: 'Requires billing setup' },
   { id: 'claude', name: 'Anthropic Claude', hint: 'Requires billing setup' },
 ];

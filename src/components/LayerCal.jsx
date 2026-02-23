@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { Trash2, GripVertical, Plus, Info, Layers, Moon, Sun, Globe, ChevronDown, Camera, X, Mail, Code, Sparkles } from 'lucide-react';
+import { Trash2, GripVertical, Plus, Info, Layers, Moon, Sun, Globe, ChevronDown, Camera, X, Mail, Code, Sparkles, Github } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TRANSLATIONS, LANGUAGE_OPTIONS } from '@/config/translations';
@@ -276,25 +276,24 @@ export default function LayerCal() {
     }`}>
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-7xl">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <div className="flex items-center gap-3">
-            <img
-              src="/calculator-icon.svg"
-              alt="LayerCal logo"
-              className="w-10 h-10 sm:w-12 sm:h-12"
-            />
-            <div>
+        <div className="mb-4 sm:mb-6">
+          <div className={`flex justify-between items-center gap-2 px-4 py-3 rounded-xl ${
+            isDarkMode
+              ? 'bg-gray-800/90 border border-gray-700'
+              : 'bg-white/80 backdrop-blur-sm border border-gray-200/80 shadow-sm'
+          }`}>
+            <div className="flex items-center gap-3">
+              <img
+                src="/calculator-icon.svg"
+                alt="LayerCal logo"
+                className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
+              />
               <h1 className={`text-2xl sm:text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                 {t.title}
               </h1>
-              <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                {t.subtitle}
-              </p>
-          </div>
-        </div>
+            </div>
 
-
-          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             {/* Contact button */}
             <a
               href="mailto:me@chanjoongx.com"
@@ -307,6 +306,22 @@ export default function LayerCal() {
               title="me@chanjoongx.com"
             >
               <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
+            </a>
+
+            {/* GitHub link */}
+            <a
+              href="https://github.com/chanjoongx/layercal"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
+                isDarkMode 
+                  ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white' 
+                  : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 shadow-sm'
+              }`}
+              aria-label="View source on GitHub"
+              title="Star on GitHub"
+            >
+              <Github className="w-4 h-4 sm:w-5 sm:h-5" />
             </a>
 
             {/* Dark mode toggle */}
@@ -403,7 +418,9 @@ export default function LayerCal() {
               <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
               <span className="hidden sm:inline text-sm">{t.exportImage}</span>
             </button>
+            </div>
           </div>
+
         </div>
 
         {/* Info message */}

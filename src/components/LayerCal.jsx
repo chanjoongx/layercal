@@ -296,14 +296,14 @@ export default function LayerCal() {
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             {/* Contact button */}
             <a
-              href="mailto:me@chanjoongx.com"
+              href="mailto:contact@layercal.com"
               className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
                 isDarkMode 
                   ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-gray-100' 
                   : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 shadow-sm'
               }`}
               aria-label="Contact us via email"
-              title="me@chanjoongx.com"
+              title="contact@layercal.com"
             >
               <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
             </a>

@@ -275,152 +275,232 @@ export default function LayerCal() {
       isDarkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-purple-50 via-white to-blue-50'
     }`}>
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-7xl">
-        {/* Header */}
+        {/* Header
+          3-tier responsive breakpoint strategy:
+          - <768px  (mobile) : 2-row layout
+              Row1 - logo+title / 4 icon-only util buttons
+              Row2 - 3 action buttons, flex-1 equal split with labels
+          - 768-1023px (md)  : single row, action buttons icon-only
+              util buttons (with lang text) + icon-only action buttons ~340px
+              available width 736px (768 - 32px padding), no overflow
+          - 1024px+  (lg)   : single row, action buttons with labels
+              right button group ~540px, logo+title ~176px, total ~716px
+              available width 992px (1024 - 32px padding), comfortable fit
+        */}
         <div className="mb-4 sm:mb-6">
-          <div className={`flex justify-between items-center gap-2 px-4 py-3 rounded-xl ${
+          <div className={`px-3 sm:px-4 py-3 rounded-xl ${
             isDarkMode
               ? 'bg-gray-800/90 border border-gray-700'
               : 'bg-white/80 backdrop-blur-sm border border-gray-200/80 shadow-sm'
           }`}>
-            <div className="flex items-center gap-3">
-              <img
-                src="/calculator-icon.svg"
-                alt="LayerCal logo"
-                className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
-              />
-              <h1 className={`text-2xl sm:text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                {t.title}
-              </h1>
+
+            {/* Row 1: always visible */}
+            <div className="flex items-center justify-between gap-2">
+
+              {/* Logo + title
+                  min-w-0 required — without it the flex item expands to fit
+                  the full text width and pushes right-side buttons off screen */}
+              <div className="flex items-center gap-2 min-w-0">
+                <img
+                  src="/calculator-icon.svg"
+                  alt="LayerCal logo"
+                  className="w-8 h-8 md:w-11 md:h-11 flex-shrink-0"
+                />
+                <h1 className={`text-xl md:text-2xl lg:text-3xl font-bold truncate ${
+                  isDarkMode ? 'text-white' : 'text-gray-900'
+                }`}>
+                  {t.title}
+                </h1>
+              </div>
+
+              {/* Right button group
+                  flex-shrink-0 — this area must never shrink;
+                  the title on the left yields via truncate instead */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+
+                {/* Util buttons — icon always visible */}
+
+                <a
+                  href="mailto:contact@layercal.com"
+                  className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
+                    isDarkMode
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-gray-100'
+                      : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 shadow-sm'
+                  }`}
+                  aria-label="Contact us via email"
+                  title="contact@layercal.com"
+                >
+                  <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
+                </a>
+
+                <a
+                  href="https://github.com/chanjoongx/layercal"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
+                    isDarkMode
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'
+                      : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 shadow-sm'
+                  }`}
+                  aria-label="View source on GitHub"
+                  title="Star on GitHub"
+                >
+                  <Github className="w-4 h-4 sm:w-5 sm:h-5" />
+                </a>
+
+                <button
+                  onClick={handleDarkModeToggle}
+                  className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
+                    isDarkMode
+                      ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400'
+                      : 'bg-white hover:bg-gray-50 text-gray-700 shadow-sm'
+                  }`}
+                  aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                  {isDarkMode
+                    ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" />
+                    : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
+                </button>
+
+                {/* Language selector: flag + code text visible from md (768px) */}
+                <div className="relative" ref={languageMenuRef}>
+                  <button
+                    onClick={() => setShowLanguageMenu(!showLanguageMenu)}
+                    className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 sm:py-2 rounded-lg transition-colors ${
+                      isDarkMode
+                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                        : 'bg-white hover:bg-gray-50 text-gray-700 shadow-sm'
+                    }`}
+                    aria-label={`Current language: ${language}. Click to change language`}
+                    aria-expanded={showLanguageMenu}
+                    aria-haspopup="true"
+                  >
+                    <Globe className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="hidden md:inline text-sm font-medium">
+                      {currentLanguageOption.flag} {currentLanguageOption.code.toUpperCase()}
+                    </span>
+                    <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                  </button>
+
+                  {showLanguageMenu && (
+                    <div className={`absolute right-0 mt-2 w-44 rounded-lg shadow-lg z-50 ${
+                      isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
+                    }`}>
+                      {LANGUAGE_OPTIONS.map(option => (
+                        <button
+                          key={option.code}
+                          onClick={() => handleLanguageChange(option.code)}
+                          className={`w-full text-left px-4 py-2 text-sm transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                            language === option.code
+                              ? (isDarkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600')
+                              : (isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50')
+                          }`}
+                        >
+                          <span className="mr-2">{option.flag}</span>
+                          {option.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action buttons — join Row 1 from md (768px), show labels from lg (1024px)
+                    hidden below md; rendered in Row 2 instead */}
+                <div className="hidden md:flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowAdvisorModal(true)}
+                    className={`flex items-center gap-1.5 px-2 lg:px-3 py-2 rounded-lg transition-colors ${
+                      isDarkMode
+                        ? 'bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-700'
+                        : 'bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-300'
+                    }`}
+                    aria-label="AI Architecture Advisor"
+                  >
+                    <Sparkles className="w-4 h-4 flex-shrink-0" />
+                    {/* labels visible from lg only — icons are sufficient below that */}
+                    <span className="hidden lg:inline text-sm whitespace-nowrap">
+                      {t.aiAdvisor || 'AI Advisor'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowCodeModal(true)}
+                    className={`flex items-center gap-1.5 px-2 lg:px-3 py-2 rounded-lg transition-colors ${
+                      isDarkMode
+                        ? 'bg-green-900/30 hover:bg-green-900/50 text-green-400 border border-green-700'
+                        : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
+                    }`}
+                    aria-label="Export code"
+                  >
+                    <Code className="w-4 h-4 flex-shrink-0" />
+                    <span className="hidden lg:inline text-sm whitespace-nowrap">
+                      {t.exportCode || 'Export Code'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={handleExportImageClick}
+                    className={`flex items-center gap-1.5 px-2 lg:px-3 py-2 rounded-lg transition-colors ${
+                      isDarkMode
+                        ? 'bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-700'
+                        : 'bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300'
+                    }`}
+                    aria-label="Export model as image"
+                  >
+                    <Camera className="w-4 h-4 flex-shrink-0" />
+                    <span className="hidden lg:inline text-sm whitespace-nowrap">
+                      {t.exportImage}
+                    </span>
+                  </button>
+                </div>
+
+              </div>
             </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            {/* Contact button */}
-            <a
-              href="mailto:contact@layercal.com"
-              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                isDarkMode 
-                  ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-gray-100' 
-                  : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 shadow-sm'
-              }`}
-              aria-label="Contact us via email"
-              title="contact@layercal.com"
-            >
-              <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
-            </a>
-
-            {/* GitHub link */}
-            <a
-              href="https://github.com/chanjoongx/layercal"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                isDarkMode 
-                  ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white' 
-                  : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 shadow-sm'
-              }`}
-              aria-label="View source on GitHub"
-              title="Star on GitHub"
-            >
-              <Github className="w-4 h-4 sm:w-5 sm:h-5" />
-            </a>
-
-            {/* Dark mode toggle */}
-            <button
-              onClick={handleDarkModeToggle}
-              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                isDarkMode 
-                  ? 'bg-gray-800 hover:bg-gray-700 text-yellow-400' 
-                  : 'bg-white hover:bg-gray-50 text-gray-700 shadow-sm'
-              }`}
-              aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {isDarkMode ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
-            </button>
-
-            {/* Language selector */}
-            <div className="relative" ref={languageMenuRef}>
+            {/* Row 2: mobile-only action button bar (hidden from md up)
+                flex-1 equal split fills the full width at any screen size */}
+            <div className="flex md:hidden gap-2 mt-2 pt-2 border-t border-gray-400/20">
               <button
-                onClick={() => setShowLanguageMenu(!showLanguageMenu)}
-                className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors ${
-                  isDarkMode 
-                    ? 'bg-gray-800 hover:bg-gray-700 text-gray-200' 
-                    : 'bg-white hover:bg-gray-50 text-gray-700 shadow-sm'
+                onClick={() => setShowAdvisorModal(true)}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg transition-colors text-xs font-medium min-w-0 ${
+                  isDarkMode
+                    ? 'bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-700'
+                    : 'bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-300'
                 }`}
-                aria-label={`Current language: ${language}. Click to change language`}
-                aria-expanded={showLanguageMenu}
-                aria-haspopup="true"
+                aria-label="AI Architecture Advisor"
               >
-                <Globe className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline text-sm font-medium">{currentLanguageOption.flag} {currentLanguageOption.code.toUpperCase()}</span>
-                <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">{t.aiAdvisor || 'AI Advisor'}</span>
               </button>
 
-              {showLanguageMenu && (
-                <div className={`absolute right-0 mt-2 w-40 sm:w-48 rounded-lg shadow-lg z-50 ${
-                  isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
-                }`}>
-                  {LANGUAGE_OPTIONS.map(option => (
-                    <button
-                      key={option.code}
-                      onClick={() => handleLanguageChange(option.code)}
-                      className={`w-full text-left px-3 sm:px-4 py-2 text-sm transition-colors first:rounded-t-lg last:rounded-b-lg ${
-                        language === option.code
-                          ? (isDarkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600')
-                          : (isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50')
-                      }`}
-                    >
-                      <span className="hidden sm:inline mr-2">{option.flag}</span>
-                      {option.name}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <button
+                onClick={() => setShowCodeModal(true)}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg transition-colors text-xs font-medium min-w-0 ${
+                  isDarkMode
+                    ? 'bg-green-900/30 hover:bg-green-900/50 text-green-400 border border-green-700'
+                    : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
+                }`}
+                aria-label="Export code"
+              >
+                <Code className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">{t.exportCode || 'Export Code'}</span>
+              </button>
+
+              <button
+                onClick={handleExportImageClick}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg transition-colors text-xs font-medium min-w-0 ${
+                  isDarkMode
+                    ? 'bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-700'
+                    : 'bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300'
+                }`}
+                aria-label="Export model as image"
+              >
+                <Camera className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">{t.exportImage}</span>
+              </button>
             </div>
 
-            {/* AI Advisor button — NEW */}
-            <button
-              onClick={() => setShowAdvisorModal(true)}
-              className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors ${
-                isDarkMode 
-                  ? 'bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-700' 
-                  : 'bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-300'
-              }`}
-              aria-label="AI Architecture Advisor"
-            >
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline text-sm">{t.aiAdvisor || 'AI Advisor'}</span>
-            </button>
-
-            {/* Export Code button - NEW */}
-            <button
-              onClick={() => setShowCodeModal(true)}
-              className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors ${
-                isDarkMode 
-                  ? 'bg-green-900/30 hover:bg-green-900/50 text-green-400 border border-green-700' 
-                  : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
-              }`}
-              aria-label="Export code"
-            >
-              <Code className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline text-sm">{t.exportCode || 'Export Code'}</span>
-            </button>
-
-            {/* Export Image button */}
-            <button
-              onClick={handleExportImageClick}
-              className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors ${
-                isDarkMode 
-                  ? 'bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-700' 
-                  : 'bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300'
-              }`}
-              aria-label="Export model as image"
-            >
-              <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline text-sm">{t.exportImage}</span>
-            </button>
-            </div>
           </div>
-
         </div>
 
         {/* Info message */}

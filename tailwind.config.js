@@ -4,6 +4,9 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  // LayerCal toggles a `dark` class on <html>, so `dark:` variants must follow
+  // the class rather than the OS media query.
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {

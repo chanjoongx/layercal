@@ -1,26 +1,61 @@
 {
-  "name": "LayerCal",
+  "id": "/",
+  "name": "LayerCal: Deep Learning Parameter Calculator",
   "short_name": "LayerCal",
-  "description": "Deep Learning Parameter Calculator & AI Architecture Advisor",
+  "description": "Calculate neural network parameters, FLOPs and memory, and generate PyTorch, TensorFlow and JAX code, entirely in your browser.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
+  "lang": "en",
+  "dir": "ltr",
   "background_color": "#0f172a",
   "theme_color": "#7c3aed",
+  "categories": ["developer", "education", "productivity", "utilities"],
+  "_comment_sizes": "Every raster icon was exported at 2x its filename, so `sizes` states the real pixel dimensions. A mismatch fails install validation.",
   "icons": [
     {
-      "src": "/favicon-16x16.png",
-      "sizes": "16x16",
-      "type": "image/png"
-    },
-    {
       "src": "/favicon-32x32.png",
-      "sizes": "32x32",
+      "sizes": "64x64",
       "type": "image/png"
     },
     {
       "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
+      "sizes": "360x360",
       "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/calculator-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot.png",
+      "type": "image/png",
+      "sizes": "1950x1540",
+      "form_factor": "wide",
+      "label": "Building a model on the LayerCal canvas"
     }
   ]
 }

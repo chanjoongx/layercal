@@ -2,51 +2,76 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    
+
+    <!--
+      Theme must be resolved before first paint, otherwise a dark-mode visitor
+      sees a white flash on every load. This mirrors the init logic in
+      LayerCal.jsx; keep the two in sync.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('layercal-darkmode');
+          var dark = saved !== null
+            ? saved === 'true'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark) document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+          var lang = localStorage.getItem('layercal-language');
+          if (lang) document.documentElement.lang = lang;
+        } catch (e) {
+          /* Storage blocked. The app falls back to system preference. */
+        }
+      })();
+    </script>
+
     <!-- Basic Meta Tags -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#7c3aed" />
-    
-    <!-- Preconnect Hints -->
-    <link rel="preconnect" href="https://www.googletagmanager.com" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#7c3aed" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111827" />
+
+    <!-- Resolve DNS for analytics early without paying for a connection it may never use -->
     <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
-    
+
     <!-- SEO Meta Tags -->
-    <title>LayerCal - Deep Learning Parameter Calculator & AI Advisor</title>
-    <meta name="description" content="Calculate neural network parameters, FLOPs, and memory. Describe your model to get AI-validated architectures. Auto-generate PyTorch, TensorFlow, JAX code." />
+    <title>LayerCal: Deep Learning Parameter Calculator &amp; AI Architect</title>
+    <meta name="description" content="Free browser tool to calculate neural network parameters, FLOPs and memory for 14 layer types. Describe a model in plain English to get a validated architecture, then export runnable PyTorch, TensorFlow or JAX code." />
     <meta name="keywords" content="deep learning parameter calculator, neural network FLOPs, memory estimation, pytorch code generator, tensorflow, jax, AI architecture advisor, model builder, transformer, LSTM, CNN, RAG, LLM, machine learning tool" />
     <meta name="author" content="chanjoongx" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
-    <link rel="canonical" href="https://layercal.com" />
-    
-    <!-- Favicons -->
+    <link rel="canonical" href="https://layercal.com/" />
+
+    <!-- Favicons. `sizes` reflects real pixel dimensions, which are 2x each filename. -->
     <link rel="icon" type="image/svg+xml" href="/calculator-icon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="360x360" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:url" content="https://layercal.com" />
+    <meta property="og:url" content="https://layercal.com/" />
     <meta property="og:site_name" content="LayerCal" />
-    <meta property="og:title" content="LayerCal - Deep Learning Parameter Calculator & AI Advisor" />
-    <meta property="og:description" content="Calculate parameters, FLOPs, memory for neural networks. Describe your model in plain English to get a validated architecture. Auto-generate PyTorch, TensorFlow, JAX code." />
+    <meta property="og:title" content="LayerCal: Deep Learning Parameter Calculator &amp; AI Architect" />
+    <meta property="og:description" content="Calculate parameters, FLOPs and memory for neural networks. Describe your model in plain English to get a validated architecture. Export runnable PyTorch, TensorFlow and JAX code." />
     <meta property="og:image" content="https://layercal.com/og-image.png" />
+    <meta property="og:image:secure_url" content="https://layercal.com/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="LayerCal interface showing neural network parameter calculator and AI architecture advisor" />
-    
+    <meta property="og:image:alt" content="LayerCal interface showing a neural network parameter calculator and AI architecture advisor" />
+
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@chanjoongx" />
     <meta name="twitter:creator" content="@chanjoongx" />
-    <meta name="twitter:title" content="LayerCal - Deep Learning Parameter Calculator & AI Advisor" />
-    <meta name="twitter:description" content="Calculate parameters, FLOPs, memory. Describe your model to get a validated architecture via AI. PyTorch, TensorFlow, JAX code gen." />
+    <meta name="twitter:title" content="LayerCal: Deep Learning Parameter Calculator &amp; AI Architect" />
+    <meta name="twitter:description" content="Calculate parameters, FLOPs and memory. Describe your model to get a validated architecture via AI. PyTorch, TensorFlow and JAX code generation." />
     <meta name="twitter:image" content="https://layercal.com/og-image.png" />
-    <meta name="twitter:image:alt" content="LayerCal interface showing neural network parameter calculator and AI architecture advisor" />
-    
+    <meta name="twitter:image:alt" content="LayerCal interface showing a neural network parameter calculator and AI architecture advisor" />
+
     <!-- Additional SEO -->
     <meta name="application-name" content="LayerCal" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -54,72 +79,312 @@
     <meta name="apple-mobile-web-app-title" content="LayerCal" />
     <meta name="format-detection" content="telephone=no" />
     <meta name="mobile-web-app-capable" content="yes" />
-    
-    <!-- Schema.org Structured Data -->
+
+    <!-- Schema.org: the application itself -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
+      "@id": "https://layercal.com/#app",
       "name": "LayerCal",
       "alternateName": "Layer Calculator",
       "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Machine Learning Tool",
       "operatingSystem": "Any",
-      "browserRequirements": "Requires JavaScript. Works in Chrome, Firefox, Safari, Edge.",
-      "softwareVersion": "2.0.0",
-      "description": "Free browser-based deep learning calculator with AI architecture advisor. Calculate parameters, FLOPs, and memory for 14+ layer types. Describe a model in plain English and get a validated architecture via RAG and LLM. Auto-generate PyTorch, TensorFlow, and JAX code.",
-      "url": "https://layercal.com",
+      "browserRequirements": "Requires JavaScript. Works in Chrome, Firefox, Safari and Edge.",
+      "softwareVersion": "2.1.0",
+      "description": "Free browser-based deep learning calculator with an AI architecture advisor. Calculate parameters, FLOPs and memory for 14 layer types. Describe a model in plain English and get a validated architecture via RAG and an LLM. Generate runnable PyTorch, TensorFlow and JAX code.",
+      "url": "https://layercal.com/",
       "screenshot": "https://layercal.com/og-image.png",
+      "isAccessibleForFree": true,
       "offers": {
         "@type": "Offer",
         "price": "0",
         "priceCurrency": "USD"
       },
+      "license": "https://opensource.org/licenses/MIT",
       "featureList": [
         "AI Architecture Advisor: describe a model in natural language, receive a validated layer stack",
         "Client-side RAG pipeline with 12 reference architectures",
-        "Multi-provider LLM support (Google Gemini, OpenAI, Anthropic Claude)",
+        "Multi-provider LLM support (Google Gemini, OpenAI, Anthropic Claude) with per-provider model override",
         "Deterministic post-validation with cross-layer dimension fixing",
         "14 neural network layer types with configurable hyperparameters",
         "Drag and drop interface for building architectures",
         "Real-time parameter count calculation",
-        "FLOPs estimation for forward pass",
-        "Memory usage estimation for inference and training modes",
-        "Auto code generation for PyTorch nn.Module",
-        "Auto code generation for TensorFlow Sequential and Functional API",
-        "Auto code generation for JAX Flax nn.compact",
+        "FLOPs estimation for the forward pass",
+        "Memory estimation for inference and Adam training",
+        "Code generation for PyTorch nn.Module",
+        "Code generation for TensorFlow Sequential and Functional API",
+        "Code generation for JAX Flax nn.compact",
         "Smart layer grouping such as TransformerEncoder",
         "Context-aware BatchNorm 1d and 2d selection",
-        "Export model architecture as PNG image",
-        "Multi-language support for 8 languages",
+        "Automatic global average pool and flatten on convolution to dense transitions",
+        "Export the model architecture as a PNG image",
+        "Model canvas persists across browser sessions",
+        "Interface available in 8 languages",
         "Dark mode with system preference detection",
-        "FP32 FP16 INT8 precision selection"
+        "FP32, FP16, BF16 and INT8 precision selection"
       ],
       "creator": {
         "@type": "Person",
-        "name": "Chanjoong Kim",
+        "name": "chanjoongx",
         "url": "https://github.com/chanjoongx"
       },
       "datePublished": "2026-01-15",
-      "dateModified": "2026-02-20",
+      "dateModified": "2026-08-18",
       "inLanguage": ["en", "ko", "ja", "zh", "es", "fr", "de", "pt"]
+    }
+    </script>
+
+    <!-- Schema.org: the reference answers below, for search and answer engines -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "@id": "https://layercal.com/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How do you calculate the number of parameters in a neural network layer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Each layer type has its own formula. A Linear layer has input_dim x output_dim weights plus output_dim biases. A Conv2D layer has in_channels x out_channels x kernel_size squared weights plus out_channels biases. An Embedding layer has vocab_size x embedding_dim weights. An LSTM layer has 4 x (input_size x hidden_size + hidden_size squared + 2 x hidden_size) parameters per layer per direction, and a GRU has the same formula with 3 gates instead of 4. Activation, dropout and pooling layers have no learnable parameters."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How much GPU memory does training a model need?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "With the Adam optimizer, budget roughly 16 bytes per parameter. That figure does not change when you switch to mixed precision. Pure FP32 training holds 4 bytes of weights, 4 of gradients and 8 of optimizer moments. Mixed precision holds 2 bytes of weights and 2 of gradients but adds an FP32 master copy of the weights, so the total is the same 16 bytes. Activation memory is separate and depends on batch size and input shape."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does FP16 or BF16 halve training memory?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Mixed precision halves the memory used for weights and gradients, but the optimizer still keeps an FP32 master copy of the weights alongside its two moment buffers. Those FP32 states cancel out the saving, so Adam training costs about 16 bytes per parameter at any weight precision. Inference is different: there, FP16 and BF16 genuinely halve the memory compared to FP32, and INT8 quarters it."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How many parameters does a transformer block have?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A standard encoder block has 4 x (d_model squared + d_model) parameters for the query, key, value and output projections, plus 2 x d_model x d_ff + d_ff + d_model for the feed-forward network, plus 4 x d_model for the two layer norms. When d_ff is 4 x d_model, that simplifies to 12 x d_model squared + 13 x d_model. A block with d_model 512 and d_ff 2048 therefore has 3,152,384 parameters."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do you count FLOPs for a forward pass?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Count a multiply-accumulate as two floating point operations. A Linear layer costs 2 x input_dim x output_dim. A Conv2D layer costs 2 x in_channels x out_channels x kernel_size squared x output_height x output_width. Attention costs 2 x seq_len squared x d_model for the score matrix plus 8 x seq_len x d_model squared for the four projections. FLOPs depend on input shape, so any figure is only meaningful alongside the assumed shape."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is LayerCal free, and does it send my data anywhere?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LayerCal is free and open source under the MIT licence. All calculations and code generation run in your browser, with no account and no backend. The AI Architecture Advisor is bring-your-own-key: your API key is stored in your browser and is sent only to the provider you choose, which is Google, OpenAI or Anthropic. You can turn off key storage entirely in the advanced settings."
+          }
+        }
+      ]
     }
     </script>
   </head>
   <body>
     <noscript>
-      <div style="padding:2rem;max-width:600px;margin:0 auto;font-family:system-ui,sans-serif;color:#1f2937;">
+      <div style="padding:2rem;max-width:640px;margin:0 auto;font-family:system-ui,sans-serif;color:#1f2937;">
         <h1>LayerCal</h1>
-        <h2>Deep Learning Parameter Calculator & AI Architecture Advisor</h2>
-        <p>Calculate neural network parameters, FLOPs, and memory usage for 14 layer types including Transformer, LSTM, Conv2D, and more.</p>
-        <p>Features: AI-powered architecture generation from natural language descriptions. Auto code generation for PyTorch, TensorFlow, and JAX. Supports FP32, FP16, INT8 precision.</p>
-        <p>This application requires JavaScript. Please enable it in your browser.</p>
-        <p>
-          <a href="https://github.com/chanjoongx/layercal">View source on GitHub</a> |
-          <a href="https://layercal.com">layercal.com</a>
-        </p>
+        <h2>Deep Learning Parameter Calculator and AI Architecture Advisor</h2>
+        <p>The interactive calculator needs JavaScript. The reference tables further down this page do not, so you can still read the formulas.</p>
+        <p><a href="https://github.com/chanjoongx/layercal">View the source on GitHub</a></p>
       </div>
     </noscript>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!--
+      Static reference content.
+
+      The calculator itself is client-rendered, so without this block the page
+      ships almost no readable text. Search crawlers render JavaScript, but the
+      crawlers behind AI answer engines generally do not, which made the site
+      effectively invisible to them. This content is written for people first
+      and mirrors the FAQ structured data above.
+    -->
+    <section
+      id="reference"
+      lang="en"
+      class="border-t border-gray-200 bg-white px-4 py-12 dark:border-gray-800 dark:bg-gray-900 sm:py-16"
+    >
+      <div class="mx-auto max-w-3xl">
+        <h2 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
+          Neural network parameter and memory reference
+        </h2>
+        <p class="mt-3 text-sm leading-relaxed text-gray-600 dark:text-gray-300 sm:text-base">
+          LayerCal is a free, browser-based calculator for deep learning models. Drag layers onto a
+          canvas to get parameter counts, forward-pass FLOPs and memory estimates, then export the
+          model as runnable PyTorch, TensorFlow or JAX code. Nothing is uploaded and no account is
+          needed. The formulas it uses are below.
+        </p>
+
+        <h3 class="mt-10 text-lg font-semibold text-gray-900 dark:text-white">Parameter count by layer type</h3>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[34rem] border-collapse text-left text-sm">
+            <thead>
+              <tr class="border-b border-gray-300 dark:border-gray-700">
+                <th scope="col" class="py-2 pr-4 font-semibold text-gray-900 dark:text-white">Layer</th>
+                <th scope="col" class="py-2 pr-4 font-semibold text-gray-900 dark:text-white">Parameters</th>
+                <th scope="col" class="py-2 font-semibold text-gray-900 dark:text-white">Notes</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-600 dark:text-gray-300">
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Embedding</th>
+                <td class="py-2 pr-4 font-mono text-xs">V &times; E</td><td class="py-2">Vocabulary size by embedding dimension</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Linear</th>
+                <td class="py-2 pr-4 font-mono text-xs">I &times; O + O</td><td class="py-2">Bias term adds one per output unit</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Conv2D</th>
+                <td class="py-2 pr-4 font-mono text-xs">C<sub>in</sub> &times; C<sub>out</sub> &times; K&sup2; + C<sub>out</sub></td><td class="py-2">Independent of input resolution</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">LSTM</th>
+                <td class="py-2 pr-4 font-mono text-xs">4(IH + H&sup2; + 2H) &times; L &times; dir</td><td class="py-2">Four gates, two bias vectors per gate</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">GRU</th>
+                <td class="py-2 pr-4 font-mono text-xs">3(IH + H&sup2; + 2H) &times; L &times; dir</td><td class="py-2">Three gates, so 75 percent of an LSTM</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Transformer block</th>
+                <td class="py-2 pr-4 font-mono text-xs">12d&sup2; + 13d</td><td class="py-2">When d<sub>ff</sub> equals 4d</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Self-attention</th>
+                <td class="py-2 pr-4 font-mono text-xs">4(d&sup2; + d)</td><td class="py-2">Query, key, value and output projections</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">BatchNorm, LayerNorm</th>
+                <td class="py-2 pr-4 font-mono text-xs">2F</td><td class="py-2">One scale and one shift per feature</td>
+              </tr>
+              <tr>
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">ReLU, Softmax, Dropout, Pooling</th>
+                <td class="py-2 pr-4 font-mono text-xs">0</td><td class="py-2">No learnable parameters</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="mt-10 text-lg font-semibold text-gray-900 dark:text-white">Memory per parameter</h3>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[30rem] border-collapse text-left text-sm">
+            <thead>
+              <tr class="border-b border-gray-300 dark:border-gray-700">
+                <th scope="col" class="py-2 pr-4 font-semibold text-gray-900 dark:text-white">Mode</th>
+                <th scope="col" class="py-2 pr-4 font-semibold text-gray-900 dark:text-white">Bytes per parameter</th>
+                <th scope="col" class="py-2 font-semibold text-gray-900 dark:text-white">Breakdown</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-600 dark:text-gray-300">
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Inference FP32</th>
+                <td class="py-2 pr-4">4</td><td class="py-2">Weights only</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Inference FP16 or BF16</th>
+                <td class="py-2 pr-4">2</td><td class="py-2">Weights only</td>
+              </tr>
+              <tr class="border-b border-gray-200 dark:border-gray-800">
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Inference INT8</th>
+                <td class="py-2 pr-4">1</td><td class="py-2">Quantised weights</td>
+              </tr>
+              <tr>
+                <th scope="row" class="py-2 pr-4 font-medium text-gray-800 dark:text-gray-100">Training with Adam</th>
+                <td class="py-2 pr-4">16</td><td class="py-2">Weights, gradients and two moment buffers, at any precision</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-3 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          Activation memory is excluded because it depends on batch size and input shape.
+        </p>
+
+        <h3 class="mt-10 text-lg font-semibold text-gray-900 dark:text-white">Frequently asked questions</h3>
+        <dl class="mt-4 space-y-6">
+          <div>
+            <dt class="text-base font-semibold text-gray-900 dark:text-white">How do you calculate the number of parameters in a neural network layer?</dt>
+            <dd class="mt-1.5 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+              Each layer type has its own formula. A Linear layer has <code class="font-mono text-xs">input_dim &times; output_dim</code>
+              weights plus one bias per output unit. A Conv2D layer has <code class="font-mono text-xs">in_channels &times; out_channels &times; kernel_size&sup2;</code>
+              weights plus one bias per output channel. An Embedding layer has <code class="font-mono text-xs">vocab_size &times; embedding_dim</code>
+              weights. LSTM and GRU repeat their gate formula once per layer and once per direction. Activation,
+              dropout and pooling layers have no learnable parameters at all.
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base font-semibold text-gray-900 dark:text-white">How much GPU memory does training a model need?</dt>
+            <dd class="mt-1.5 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+              With the Adam optimiser, budget roughly 16 bytes per parameter. Pure FP32 training holds 4 bytes
+              of weights, 4 of gradients and 8 across the two moment buffers. Activation memory sits on top of
+              that and scales with batch size and input shape.
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base font-semibold text-gray-900 dark:text-white">Does FP16 or BF16 halve training memory?</dt>
+            <dd class="mt-1.5 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+              No, and this is the most common estimation mistake. Mixed precision halves the weights and
+              gradients, but the optimiser still keeps an FP32 master copy of the weights next to its two moment
+              buffers, which cancels the saving out. Adam training costs about 16 bytes per parameter whatever
+              the weight dtype. Inference is the opposite case: there, FP16 and BF16 really do halve memory
+              against FP32, and INT8 quarters it.
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base font-semibold text-gray-900 dark:text-white">How many parameters does a transformer block have?</dt>
+            <dd class="mt-1.5 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+              A standard encoder block needs <code class="font-mono text-xs">4(d&sup2; + d)</code> for the four attention
+              projections, <code class="font-mono text-xs">2 &times; d &times; d_ff + d_ff + d</code> for the feed-forward network,
+              and <code class="font-mono text-xs">4d</code> for the two layer norms. With <code class="font-mono text-xs">d_ff = 4d</code>
+              that collapses to <code class="font-mono text-xs">12d&sup2; + 13d</code>, so a block with d_model 512 and
+              d_ff 2048 has 3,152,384 parameters.
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base font-semibold text-gray-900 dark:text-white">How do you count FLOPs for a forward pass?</dt>
+            <dd class="mt-1.5 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+              Count each multiply-accumulate as two floating point operations. A Linear layer costs
+              <code class="font-mono text-xs">2 &times; I &times; O</code>, and a Conv2D layer costs
+              <code class="font-mono text-xs">2 &times; C<sub>in</sub> &times; C<sub>out</sub> &times; K&sup2; &times; H<sub>out</sub> &times; W<sub>out</sub></code>.
+              Attention adds a quadratic term in sequence length. Because every figure depends on input shape,
+              LayerCal shows the shapes it assumed directly under the FLOPs number.
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base font-semibold text-gray-900 dark:text-white">Is LayerCal free, and does it send my data anywhere?</dt>
+            <dd class="mt-1.5 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+              It is free and open source under the MIT licence. Calculations and code generation run entirely in
+              your browser, with no account and no backend. The AI Architecture Advisor is bring-your-own-key:
+              the key stays in your browser and is sent only to the provider you pick, which is Google, OpenAI or
+              Anthropic. You can switch key storage off completely under advanced settings.
+            </dd>
+          </div>
+        </dl>
+
+        <p class="mt-10 text-xs text-gray-500 dark:text-gray-400">
+          <a href="https://github.com/chanjoongx/layercal" class="underline hover:no-underline">Source on GitHub</a>
+          &middot;
+          <a href="https://github.com/chanjoongx/layercal/blob/main/LICENSE" class="underline hover:no-underline">MIT licence</a>
+        </p>
+      </div>
+    </section>
   </body>
 </html>

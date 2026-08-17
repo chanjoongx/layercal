@@ -14,7 +14,17 @@ if (GA_ID) {
   
   // Record timestamp first
   gtag('js', new Date())
-  gtag('config', GA_ID)
+
+  // Google Signals fans measurement out to ad domains: stats.g.doubleclick.net,
+  // www.google.com, and www.google.<cctld>/ads/ga-audiences. That last one
+  // varies by visitor country, so it cannot be expressed in a CSP allowlist
+  // without enumerating every ccTLD. This site runs no ads and no remarketing,
+  // so the data was unused. Turning the signals off keeps page views intact,
+  // keeps connect-src tight, and avoids sending visitors to ad domains at all.
+  gtag('config', GA_ID, {
+    allow_google_signals: false,
+    allow_ad_personalization_signals: false,
+  })
   
   // Load script next (async, so dataLayer queue handles earlier calls)
   const script = document.createElement('script')

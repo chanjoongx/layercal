@@ -55,6 +55,18 @@ describe('retrieveArchitectures', () => {
     const results = retrieveArchitectures('make a model for me please');
     expect(results.length).toBeGreaterThan(0);
   });
+
+  it('returns nothing rather than padding with irrelevant references', () => {
+    // Real tokens that match no tag, category, name or description. Injecting
+    // an unrelated reference architecture would steer the LLM wrong.
+    const results = retrieveArchitectures('zzzqqq wubbalubba flimflam');
+    expect(results).toHaveLength(0);
+  });
+
+  it('ranks by score, best first', () => {
+    const results = retrieveArchitectures('bert transformer encoder pretrain');
+    expect(results[0].id).toBe('bert-encoder');
+  });
 });
 
 
@@ -131,6 +143,80 @@ describe('parseAndValidateLayers', () => {
   });
 
 
+  // --- JSON mode: providers return a top-level object ---
+
+  it('unwraps the {"layers": [...]} object JSON mode produces', () => {
+    const input = JSON.stringify({
+      layers: [
+        { type: 'conv2d', params: { in_channels: 3, out_channels: 64, kernel_size: 3 } },
+        { type: 'relu', params: {} },
+      ],
+    });
+    const { layers } = parseAndValidateLayers(input);
+    expect(layers).toHaveLength(2);
+    expect(layers[0].type).toBe('conv2d');
+  });
+
+  it.each(['architecture', 'model', 'network', 'stack', 'result'])(
+    'unwraps an object keyed on "%s"',
+    (key) => {
+      const input = JSON.stringify({ [key]: [{ type: 'relu', params: {} }] });
+      const { layers } = parseAndValidateLayers(input);
+      expect(layers).toHaveLength(1);
+      expect(layers[0].type).toBe('relu');
+    }
+  );
+
+  it('unwraps an unexpected key by finding the layer-shaped array', () => {
+    const input = JSON.stringify({ my_design: [{ type: 'softmax', params: {} }] });
+    const { layers } = parseAndValidateLayers(input);
+    expect(layers).toHaveLength(1);
+  });
+
+  it('keeps every layer when an object response is wrapped in prose', () => {
+    const input = 'Sure!\n{"layers":[{"type":"relu","params":{}},{"type":"softmax","params":{}},{"type":"dropout","params":{"rate":0.2}}]}\nDone.';
+    const { layers } = parseAndValidateLayers(input);
+    expect(layers).toHaveLength(3);
+  });
+
+  it('handles a fenced object response', () => {
+    const input = '```json\n{"layers":[{"type":"linear","params":{"input_dim":256,"output_dim":128}}]}\n```';
+    const { layers } = parseAndValidateLayers(input);
+    expect(layers).toHaveLength(1);
+    expect(layers[0].params.output_dim).toBe(128);
+  });
+
+  it('repairs trailing commas inside an object response', () => {
+    const input = '{"layers":[{"type":"relu","params":{}},]}';
+    const { layers } = parseAndValidateLayers(input);
+    expect(layers).toHaveLength(1);
+  });
+
+  it('is not confused by brackets inside string values', () => {
+    // A stray bracket in a hallucinated key would unbalance a naive scan and
+    // truncate the array partway through.
+    const input = 'Here you go:\n' + JSON.stringify({
+      note: 'uses a [conv] stack } with { braces',
+      layers: [
+        { type: 'conv2d', params: { in_channels: 3, out_channels: 64, kernel_size: 3 } },
+        { type: 'relu', params: {} },
+        { type: 'softmax', params: {} },
+      ],
+    });
+    const { layers } = parseAndValidateLayers(input);
+    expect(layers).toHaveLength(3);
+  });
+
+  it('handles escaped quotes inside string values', () => {
+    const input = JSON.stringify({
+      note: 'a \\"quoted\\" [note]',
+      layers: [{ type: 'relu', params: {} }, { type: 'softmax', params: {} }],
+    });
+    const { layers } = parseAndValidateLayers(input);
+    expect(layers).toHaveLength(2);
+  });
+
+
   // --- Parameter snapping ---
 
   it('snaps embedding_dim to nearest valid option', () => {
@@ -138,7 +224,7 @@ describe('parseAndValidateLayers', () => {
       { type: 'embedding', params: { vocab_size: 10000, embedding_dim: 384 } },
     ]);
     const { layers } = parseAndValidateLayers(input);
-    // 384 is between 256 and 512; nearest is 256 (distance 128) vs 512 (distance 128) — tie goes to 256 (earlier in iteration)
+    // 384 is between 256 and 512; nearest is 256 (distance 128) vs 512 (distance 128), so the tie goes to 256 (earlier in iteration)
     expect([256, 512]).toContain(layers[0].params.embedding_dim);
   });
 
@@ -292,7 +378,7 @@ describe('parseAndValidateLayers', () => {
 
   // --- Cross-layer consistency ---
 
-  it('fixes Conv2D + BatchNorm — BN matches conv output when valid', () => {
+  it('fixes Conv2D + BatchNorm, with BN matching conv output when valid', () => {
     const input = JSON.stringify([
       { type: 'conv2d', params: { in_channels: 3, out_channels: 32, kernel_size: 3 } },
       { type: 'batchnorm', params: { num_features: 64 } },

@@ -3,6 +3,19 @@
  * Works gracefully in Private mode or when cookies are blocked
  */
 
+/**
+ * No storage global at all (server rendering, tests) is an expected
+ * environment, not a fault. Only a storage that *throws* is worth warning
+ * about, since that means the browser is actively blocking it.
+ */
+const hasStorage = () => {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage !== null;
+  } catch {
+    return false;
+  }
+};
+
 export const safeLocalStorage = {
   /**
    * Get a value from localStorage
@@ -11,6 +24,7 @@ export const safeLocalStorage = {
    * @returns {any} Stored value or defaultValue
    */
   getItem: (key, defaultValue = null) => {
+    if (!hasStorage()) return defaultValue;
     try {
       const item = localStorage.getItem(key);
       return item !== null ? item : defaultValue;
@@ -27,6 +41,7 @@ export const safeLocalStorage = {
    * @returns {boolean} Whether the operation succeeded
    */
   setItem: (key, value) => {
+    if (!hasStorage()) return false;
     try {
       localStorage.setItem(key, value);
       return true;
@@ -42,6 +57,7 @@ export const safeLocalStorage = {
    * @returns {boolean} Whether the operation succeeded
    */
   removeItem: (key) => {
+    if (!hasStorage()) return false;
     try {
       localStorage.removeItem(key);
       return true;
@@ -52,10 +68,43 @@ export const safeLocalStorage = {
   },
 
   /**
+   * Read and JSON.parse a value. Corrupt entries return the default
+   * rather than throwing on startup.
+   */
+  getJSON: (key, defaultValue = null) => {
+    if (!hasStorage()) return defaultValue;
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return defaultValue;
+      const parsed = JSON.parse(raw);
+      return parsed ?? defaultValue;
+    } catch (error) {
+      console.warn(`localStorage getJSON failed for key "${key}":`, error);
+      return defaultValue;
+    }
+  },
+
+  /**
+   * JSON.stringify and store a value.
+   * @returns {boolean} Whether the operation succeeded
+   */
+  setJSON: (key, value) => {
+    if (!hasStorage()) return false;
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      console.warn(`localStorage setJSON failed for key "${key}":`, error);
+      return false;
+    }
+  },
+
+  /**
    * Check if localStorage is available
    * @returns {boolean} Availability status
    */
   isAvailable: () => {
+    if (!hasStorage()) return false;
     try {
       const testKey = '__localStorage_test__';
       localStorage.setItem(testKey, 'test');
@@ -84,8 +133,25 @@ export const detectSystemDarkMode = () => {
  */
 export const detectBrowserLanguage = () => {
   if (typeof window !== 'undefined' && window.navigator) {
-    const lang = window.navigator.language || window.navigator.userLanguage;
-    return lang.split('-')[0];
+    const lang = window.navigator.languages?.[0] || window.navigator.language;
+    if (typeof lang === 'string' && lang.length > 0) {
+      return lang.split('-')[0].toLowerCase();
+    }
   }
+  return 'en';
+};
+
+/**
+ * Resolve the initial UI language: saved choice → browser language → 'en'.
+ * @param {string} storageKey - localStorage key holding the saved choice
+ * @param {string[]} supported - Supported language codes
+ */
+export const resolveInitialLanguage = (storageKey, supported) => {
+  const saved = safeLocalStorage.getItem(storageKey);
+  if (saved && supported.includes(saved)) return saved;
+
+  const browser = detectBrowserLanguage();
+  if (supported.includes(browser)) return browser;
+
   return 'en';
 };

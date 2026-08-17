@@ -1,0 +1,40 @@
+# LayerCal
+
+> A free, browser-based calculator for deep learning models. Build a network by
+> dragging layers onto a canvas and get parameter counts, forward-pass FLOPs and
+> memory estimates in real time, then export the model as runnable PyTorch,
+> TensorFlow or JAX code. Everything runs client-side: no account, no backend,
+> nothing uploaded. Open source under the MIT licence.
+
+LayerCal covers 14 layer types: Embedding, Linear, Conv2D, LSTM, GRU,
+Transformer, Self-Attention, BatchNorm, LayerNorm, Dropout, MaxPool2D,
+AvgPool2D, ReLU and Softmax.
+
+An AI Architecture Advisor turns a plain-English description into a validated
+layer stack. It is bring-your-own-key and supports Google Gemini, OpenAI and
+Anthropic Claude. The user's API key stays in their browser and is sent only to
+the provider they choose.
+
+## Key formulas
+
+- Embedding parameters: `vocab_size x embedding_dim`
+- Linear parameters: `input_dim x output_dim + output_dim`
+- Conv2D parameters: `in_channels x out_channels x kernel_size^2 + out_channels`
+- LSTM parameters: `4 x (input_size x hidden_size + hidden_size^2 + 2 x hidden_size)` per layer, per direction
+- GRU parameters: the LSTM formula with 3 gates instead of 4, so 75 percent of an LSTM
+- Transformer block parameters: `12 x d_model^2 + 13 x d_model` when `d_ff = 4 x d_model`
+- Self-attention parameters: `4 x (d_model^2 + d_model)`
+- BatchNorm and LayerNorm parameters: `2 x num_features`
+- Inference memory: `parameters x bytes_per_param`, where FP32 is 4 bytes, FP16 and BF16 are 2, INT8 is 1
+- Adam training memory: `parameters x 16 bytes`, independent of weight precision, because the FP32 master copy the optimiser keeps cancels out the saving from mixed precision
+- FLOPs: count a multiply-accumulate as 2 operations, so a Linear layer costs `2 x input_dim x output_dim`
+
+## Pages
+
+- [LayerCal calculator](https://layercal.com/): the interactive tool, plus a static formula reference and FAQ
+- [Source code](https://github.com/chanjoongx/layercal): full implementation, including the calculation formulas and code generators
+- [MIT licence](https://github.com/chanjoongx/layercal/blob/main/LICENSE)
+
+## Contact
+
+- contact@layercal.com

@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { getLayerTypes, formatNumber, calculateMemory, formatBytes } from '@/config/layerTypes'
+import {
+  getLayerTypes,
+  formatNumber,
+  calculateMemory,
+  formatBytes,
+  LAYER_TYPE_IDS,
+  TRAINING_BYTES_PER_PARAM,
+} from '@/config/layerTypes'
 
 /*
- * Mock translation object — getLayerTypes needs it for UI strings,
+ * Mock translation object. getLayerTypes needs it for UI strings,
  * but calculations don't depend on any of these values.
  */
 const stubT = new Proxy({}, {
@@ -244,4 +251,71 @@ describe('formatBytes', () => {
   it('kilobytes', () => { expect(formatBytes(4_000)).toBe('4.00 KB') })
   it('megabytes', () => { expect(formatBytes(4_000_000)).toBe('4.00 MB') })
   it('gigabytes', () => { expect(formatBytes(4_000_000_000)).toBe('4.00 GB') })
+})
+
+
+// ─────────────────────────────────────────────
+//  Guards against non-finite input
+// ─────────────────────────────────────────────
+
+describe('numeric guards', () => {
+  it.each([NaN, Infinity, -Infinity, undefined, null, 'abc'])(
+    'formatNumber(%s) never renders NaN',
+    (input) => { expect(formatNumber(input)).toBe('0') }
+  )
+
+  it.each([NaN, Infinity, -1, undefined, 'abc'])(
+    'formatBytes(%s) never renders NaN',
+    (input) => { expect(formatBytes(input)).toBe('0 B') }
+  )
+
+  it('calculateMemory returns 0 for non-finite params', () => {
+    expect(calculateMemory(NaN, 'inference', 'fp32')).toBe(0)
+    expect(calculateMemory(undefined, 'training', 'fp32')).toBe(0)
+    expect(calculateMemory(-5, 'inference', 'fp32')).toBe(0)
+  })
+})
+
+
+// ─────────────────────────────────────────────
+//  Training memory is precision-independent
+// ─────────────────────────────────────────────
+
+describe('training memory model', () => {
+  const oneM = 1_000_000
+
+  it.each(['fp32', 'fp16', 'bf16', 'int8'])(
+    'training at %s costs 16 bytes/param (Adam keeps fp32 master + moments)',
+    (precision) => {
+      expect(calculateMemory(oneM, 'training', precision))
+        .toBe(oneM * TRAINING_BYTES_PER_PARAM)
+    }
+  )
+
+  it('fp16 training does NOT halve fp32 training memory', () => {
+    expect(calculateMemory(oneM, 'training', 'fp16'))
+      .toBe(calculateMemory(oneM, 'training', 'fp32'))
+  })
+
+  it('inference still scales with precision', () => {
+    expect(calculateMemory(oneM, 'inference', 'fp16'))
+      .toBe(calculateMemory(oneM, 'inference', 'fp32') / 2)
+    expect(calculateMemory(oneM, 'inference', 'bf16'))
+      .toBe(calculateMemory(oneM, 'inference', 'fp16'))
+  })
+})
+
+
+// ─────────────────────────────────────────────
+//  LAYER_TYPE_IDS stays in sync
+// ─────────────────────────────────────────────
+
+describe('LAYER_TYPE_IDS', () => {
+  it('matches the keys getLayerTypes actually produces', () => {
+    expect([...LAYER_TYPE_IDS].sort()).toEqual(Object.keys(layers).sort())
+  })
+
+  it('has no duplicates', () => {
+    expect(new Set(LAYER_TYPE_IDS).size).toBe(LAYER_TYPE_IDS.length)
+  })
 })

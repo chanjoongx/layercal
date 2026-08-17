@@ -3,7 +3,7 @@
  *
  * Each entry represents a well-known model architecture,
  * translated into LayerCal's layer format. Used as retrieval
- * context in the RAG pipeline — when a user describes what
+ * context in the RAG pipeline. When a user describes what
  * they need, we search this DB by tags and surface the most
  * relevant references for the LLM to draw from.
  *
@@ -140,7 +140,7 @@ const ARCHITECTURE_KB = [
     name: 'GRU Sequence Model',
     category: 'sequence_modeling',
     tags: ['nlp', 'text', 'gru', 'rnn', 'sequence', 'language', 'generation', 'lightweight'],
-    description: 'GRU-based sequence model — lighter alternative to LSTM',
+    description: 'GRU-based sequence model, a lighter alternative to LSTM',
     approxParams: '~1.8M',
     layers: [
       { type: 'embedding', params: { vocab_size: 10000, embedding_dim: 256 } },

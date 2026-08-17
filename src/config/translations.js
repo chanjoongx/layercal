@@ -73,7 +73,7 @@ export const TRANSLATIONS = {
     int8: 'INT8 (8-bit)',
     // === NEW: AI Architecture Advisor ===
     aiAdvisor: 'AI Architecture Advisor',
-    aiAdvisorDesc: 'Describe your model — AI designs the layers',
+    aiAdvisorDesc: 'Describe your model and AI designs the layers',
     apiProvider: 'API Provider',
     apiKeyPlaceholder: 'Paste your API key',
     apiKeySecurityNote: 'Stored locally. Never sent to our servers.',
@@ -85,7 +85,42 @@ export const TRANSLATIONS = {
     recommendedArch: 'Recommended Architecture',
     referencedModels: 'Referenced',
     examplePrompts: 'Try:',
-    toGenerate: 'to generate'
+    toGenerate: 'to generate',
+    // === Precision & estimation notes ===
+    bf16: 'BF16 (16-bit)',
+    flopsNote: 'Forward pass · 224×224 images, 512-token sequences',
+    memoryNoteInference: 'Weights only',
+    memoryNoteTraining: 'Weights + gradients + Adam states ≈ 16 bytes/param, regardless of precision',
+    // === Canvas actions ===
+    clearAll: 'Clear all',
+    layersCleared: 'All layers removed.',
+    undo: 'Undo',
+    moveUp: 'Move layer up',
+    moveDown: 'Move layer down',
+    skipToContent: 'Skip to content',
+    dimMismatch: 'Set {field} to {n} to match the previous layer',
+    copyFailed: 'Copy failed. Select the code and copy it manually.',
+    exportFailed: 'Failed to export image. Please try again.',
+    exportErrEmpty: 'Nothing to export yet. Add a layer first.',
+    exportErrLoad: 'Could not load the image exporter. Check your connection.',
+    // === AI Advisor: advanced settings ===
+    advanced: 'Advanced',
+    modelLabel: 'Model',
+    rememberKey: 'Remember key in this browser',
+    clearKey: 'Clear',
+    cancel: 'Cancel',
+    estimatedParams: 'Estimated parameters',
+    tokensUsed: 'Tokens',
+    applyReplace: 'Replace canvas',
+    applyAppend: 'Append',
+    // === AI Advisor: errors ===
+    errInvalidKey: 'Invalid or unauthorized API key. Check the key for this provider.',
+    errRateLimit: 'Rate limit or quota exceeded. Wait a moment and try again.',
+    errModelNotFound: 'This model is unavailable. It may have been retired, so choose another under Advanced.',
+    errTimeout: 'The request timed out. Please try again.',
+    errNetwork: 'Network error. Check your internet connection.',
+    errServer: "The provider's servers are temporarily unavailable.",
+    errGeneric: 'Something went wrong.'
   },
   ko: {
     title: 'LayerCal',
@@ -173,7 +208,43 @@ export const TRANSLATIONS = {
     recommendedArch: '추천 아키텍처',
     referencedModels: '참조 모델',
     examplePrompts: '예시:',
-    toGenerate: '으로 생성'
+    toGenerate: '로 생성',
+    // === Precision & estimation notes ===
+    bf16: 'BF16 (16비트)',
+    flopsNote: '순전파 기준 · 224×224 이미지, 512 토큰 시퀀스 가정',
+    memoryNoteInference: '가중치만 포함',
+    memoryNoteTraining: '가중치 + 그래디언트 + Adam 상태 ≈ 파라미터당 16바이트 (정밀도와 무관)',
+    // === Canvas actions ===
+    clearAll: '전체 삭제',
+    layersCleared: '모든 레이어를 삭제했습니다.',
+    undo: '실행 취소',
+    moveUp: '레이어 위로 이동',
+    moveDown: '레이어 아래로 이동',
+    skipToContent: '본문으로 건너뛰기',
+    // 조사가 숫자 발음에 따라 달라지므로(64로 / 256으로) 조사 없는 형태로 표기
+    dimMismatch: '{field} 권장값: {n} (이전 레이어 출력과 일치)',
+    copyFailed: '복사에 실패했습니다. 코드를 직접 선택해 복사해 주세요.',
+    exportFailed: '이미지 내보내기에 실패했습니다. 다시 시도해 주세요.',
+    exportErrEmpty: '내보낼 내용이 없습니다. 먼저 레이어를 추가하세요.',
+    exportErrLoad: '이미지 내보내기 모듈을 불러오지 못했습니다. 연결을 확인해 주세요.',
+    // === AI Advisor: advanced settings ===
+    advanced: '고급 설정',
+    modelLabel: '모델',
+    rememberKey: '이 브라우저에 키 저장',
+    clearKey: '삭제',
+    cancel: '취소',
+    estimatedParams: '예상 파라미터 수',
+    tokensUsed: '토큰',
+    applyReplace: '캔버스 교체',
+    applyAppend: '이어서 추가',
+    // === AI Advisor: errors ===
+    errInvalidKey: 'API 키가 올바르지 않거나 권한이 없습니다. 해당 제공자의 키를 확인하세요.',
+    errRateLimit: '요청 한도 또는 할당량을 초과했습니다. 잠시 후 다시 시도하세요.',
+    errModelNotFound: '이 모델을 사용할 수 없습니다. 서비스가 종료되었을 수 있으니 고급 설정에서 다른 모델을 지정하세요.',
+    errTimeout: '요청 시간이 초과되었습니다. 다시 시도해 주세요.',
+    errNetwork: '네트워크 오류입니다. 인터넷 연결을 확인하세요.',
+    errServer: '제공자 서버가 일시적으로 응답하지 않습니다.',
+    errGeneric: '문제가 발생했습니다.'
   },
   ja: {
     title: 'LayerCal',
@@ -261,7 +332,42 @@ export const TRANSLATIONS = {
     recommendedArch: '推奨アーキテクチャ',
     referencedModels: '参考モデル',
     examplePrompts: '例：',
-    toGenerate: 'で生成'
+    toGenerate: 'で生成',
+    // === Precision & estimation notes ===
+    bf16: 'BF16 (16ビット)',
+    flopsNote: '順伝播のみ · 224×224画像、512トークン系列を想定',
+    memoryNoteInference: '重みのみ',
+    memoryNoteTraining: '重み + 勾配 + Adam状態 ≈ パラメータあたり16バイト（精度に依存しません）',
+    // === Canvas actions ===
+    clearAll: 'すべて削除',
+    layersCleared: 'すべてのレイヤーを削除しました。',
+    undo: '元に戻す',
+    moveUp: 'レイヤーを上に移動',
+    moveDown: 'レイヤーを下に移動',
+    skipToContent: 'コンテンツにスキップ',
+    dimMismatch: '前のレイヤーの出力に合わせるには {field} を {n} にしてください',
+    copyFailed: 'コピーに失敗しました。コードを選択して手動でコピーしてください。',
+    exportFailed: '画像のエクスポートに失敗しました。もう一度お試しください。',
+    exportErrEmpty: 'エクスポートする内容がありません。まずレイヤーを追加してください。',
+    exportErrLoad: '画像エクスポート機能を読み込めませんでした。接続を確認してください。',
+    // === AI Advisor: advanced settings ===
+    advanced: '詳細設定',
+    modelLabel: 'モデル',
+    rememberKey: 'このブラウザにキーを保存',
+    clearKey: '削除',
+    cancel: 'キャンセル',
+    estimatedParams: '推定パラメータ数',
+    tokensUsed: 'トークン',
+    applyReplace: 'キャンバスを置き換え',
+    applyAppend: '追加',
+    // === AI Advisor: errors ===
+    errInvalidKey: 'APIキーが無効か、権限がありません。プロバイダーのキーを確認してください。',
+    errRateLimit: 'レート制限またはクォータを超えました。しばらく待ってから再試行してください。',
+    errModelNotFound: 'このモデルは利用できません。提供が終了した可能性があるため、詳細設定で別のモデルを指定してください。',
+    errTimeout: 'リクエストがタイムアウトしました。もう一度お試しください。',
+    errNetwork: 'ネットワークエラーです。インターネット接続を確認してください。',
+    errServer: 'プロバイダーのサーバーが一時的に利用できません。',
+    errGeneric: '問題が発生しました。'
   },
   zh: {
     title: 'LayerCal',
@@ -349,7 +455,42 @@ export const TRANSLATIONS = {
     recommendedArch: '推荐架构',
     referencedModels: '参考模型',
     examplePrompts: '试试：',
-    toGenerate: '生成'
+    toGenerate: '生成',
+    // === Precision & estimation notes ===
+    bf16: 'BF16 (16位)',
+    flopsNote: '仅前向传播 · 假设 224×224 图像、512 词元序列',
+    memoryNoteInference: '仅权重',
+    memoryNoteTraining: '权重 + 梯度 + Adam 状态 ≈ 每参数 16 字节（与精度无关）',
+    // === Canvas actions ===
+    clearAll: '清空全部',
+    layersCleared: '已移除所有层。',
+    undo: '撤销',
+    moveUp: '上移一层',
+    moveDown: '下移一层',
+    skipToContent: '跳到主要内容',
+    dimMismatch: '将 {field} 设为 {n} 以匹配上一层的输出',
+    copyFailed: '复制失败，请手动选择代码并复制。',
+    exportFailed: '导出图片失败，请重试。',
+    exportErrEmpty: '暂无可导出的内容，请先添加层。',
+    exportErrLoad: '无法加载图片导出模块，请检查网络连接。',
+    // === AI Advisor: advanced settings ===
+    advanced: '高级设置',
+    modelLabel: '模型',
+    rememberKey: '在此浏览器中保存密钥',
+    clearKey: '清除',
+    cancel: '取消',
+    estimatedParams: '预计参数量',
+    tokensUsed: '词元',
+    applyReplace: '替换画布',
+    applyAppend: '追加',
+    // === AI Advisor: errors ===
+    errInvalidKey: 'API 密钥无效或无权限，请检查该提供商的密钥。',
+    errRateLimit: '已超出速率限制或配额，请稍后重试。',
+    errModelNotFound: '该模型不可用，可能已下线。请在高级设置中指定其他模型。',
+    errTimeout: '请求超时，请重试。',
+    errNetwork: '网络错误，请检查网络连接。',
+    errServer: '提供商服务器暂时不可用。',
+    errGeneric: '出现了一些问题。'
   },
   es: {
     title: 'LayerCal',
@@ -425,7 +566,7 @@ export const TRANSLATIONS = {
     int8: 'INT8 (8-bit)',
     // === NEW: AI Architecture Advisor ===
     aiAdvisor: 'Asesor de Arquitectura IA',
-    aiAdvisorDesc: 'Describe tu modelo — la IA diseña las capas',
+    aiAdvisorDesc: 'Describe tu modelo y la IA diseña las capas',
     apiProvider: 'Proveedor de API',
     apiKeyPlaceholder: 'Pega tu clave API',
     apiKeySecurityNote: 'Almacenada localmente. Nunca se envía a nuestros servidores.',
@@ -437,7 +578,42 @@ export const TRANSLATIONS = {
     recommendedArch: 'Arquitectura Recomendada',
     referencedModels: 'Referencia',
     examplePrompts: 'Prueba:',
-    toGenerate: 'para generar'
+    toGenerate: 'para generar',
+    // === Precision & estimation notes ===
+    bf16: 'BF16 (16-bit)',
+    flopsNote: 'Pase hacia adelante · imágenes 224×224, secuencias de 512 tokens',
+    memoryNoteInference: 'Solo pesos',
+    memoryNoteTraining: 'Pesos + gradientes + estados de Adam ≈ 16 bytes/parámetro, independiente de la precisión',
+    // === Canvas actions ===
+    clearAll: 'Borrar todo',
+    layersCleared: 'Se han eliminado todas las capas.',
+    undo: 'Deshacer',
+    moveUp: 'Subir la capa',
+    moveDown: 'Bajar la capa',
+    skipToContent: 'Saltar al contenido',
+    dimMismatch: 'Ajusta {field} a {n} para que coincida con la capa anterior',
+    copyFailed: 'Error al copiar. Selecciona el código y cópialo manualmente.',
+    exportFailed: 'No se pudo exportar la imagen. Inténtalo de nuevo.',
+    exportErrEmpty: 'No hay nada que exportar. Añade una capa primero.',
+    exportErrLoad: 'No se pudo cargar el exportador de imágenes. Comprueba tu conexión.',
+    // === AI Advisor: advanced settings ===
+    advanced: 'Avanzado',
+    modelLabel: 'Modelo',
+    rememberKey: 'Recordar la clave en este navegador',
+    clearKey: 'Borrar',
+    cancel: 'Cancelar',
+    estimatedParams: 'Parámetros estimados',
+    tokensUsed: 'Tokens',
+    applyReplace: 'Reemplazar lienzo',
+    applyAppend: 'Añadir',
+    // === AI Advisor: errors ===
+    errInvalidKey: 'Clave API inválida o sin autorización. Comprueba la clave de este proveedor.',
+    errRateLimit: 'Límite de peticiones o cuota superado. Espera un momento e inténtalo de nuevo.',
+    errModelNotFound: 'Este modelo no está disponible. Puede haber sido retirado, así que elige otro en Avanzado.',
+    errTimeout: 'La solicitud ha caducado. Inténtalo de nuevo.',
+    errNetwork: 'Error de red. Comprueba tu conexión a internet.',
+    errServer: 'Los servidores del proveedor no están disponibles temporalmente.',
+    errGeneric: 'Algo ha salido mal.'
   },
   fr: {
     title: 'LayerCal',
@@ -513,7 +689,7 @@ export const TRANSLATIONS = {
     int8: 'INT8 (8-bit)',
     // === NEW: AI Architecture Advisor ===
     aiAdvisor: 'Conseiller Architecture IA',
-    aiAdvisorDesc: "Décrivez votre modèle — l'IA conçoit les couches",
+    aiAdvisorDesc: "Décrivez votre modèle et l'IA conçoit les couches",
     apiProvider: 'Fournisseur API',
     apiKeyPlaceholder: 'Collez votre clé API',
     apiKeySecurityNote: 'Stockée localement. Jamais envoyée à nos serveurs.',
@@ -525,7 +701,42 @@ export const TRANSLATIONS = {
     recommendedArch: 'Architecture Recommandée',
     referencedModels: 'Référence',
     examplePrompts: 'Essayez :',
-    toGenerate: 'pour générer'
+    toGenerate: 'pour générer',
+    // === Precision & estimation notes ===
+    bf16: 'BF16 (16-bit)',
+    flopsNote: 'Passe avant · images 224×224, séquences de 512 tokens',
+    memoryNoteInference: 'Poids uniquement',
+    memoryNoteTraining: "Poids + gradients + états Adam ≈ 16 octets/paramètre, indépendamment de la précision",
+    // === Canvas actions ===
+    clearAll: 'Tout effacer',
+    layersCleared: 'Toutes les couches ont été supprimées.',
+    undo: 'Annuler',
+    moveUp: 'Monter la couche',
+    moveDown: 'Descendre la couche',
+    skipToContent: 'Aller au contenu',
+    dimMismatch: 'Réglez {field} sur {n} pour correspondre à la couche précédente',
+    copyFailed: 'Échec de la copie. Sélectionnez le code et copiez-le manuellement.',
+    exportFailed: "Échec de l'export de l'image. Veuillez réessayer.",
+    exportErrEmpty: "Rien à exporter. Ajoutez d'abord une couche.",
+    exportErrLoad: "Impossible de charger l'outil d'export. Vérifiez votre connexion.",
+    // === AI Advisor: advanced settings ===
+    advanced: 'Avancé',
+    modelLabel: 'Modèle',
+    rememberKey: 'Mémoriser la clé dans ce navigateur',
+    clearKey: 'Effacer',
+    cancel: 'Annuler',
+    estimatedParams: 'Paramètres estimés',
+    tokensUsed: 'Tokens',
+    applyReplace: 'Remplacer le canevas',
+    applyAppend: 'Ajouter',
+    // === AI Advisor: errors ===
+    errInvalidKey: 'Clé API invalide ou non autorisée. Vérifiez la clé de ce fournisseur.',
+    errRateLimit: 'Limite de débit ou quota dépassé. Patientez un instant puis réessayez.',
+    errModelNotFound: "Ce modèle est indisponible. Il a peut-être été retiré, choisissez-en un autre dans Avancé.",
+    errTimeout: 'La requête a expiré. Veuillez réessayer.',
+    errNetwork: 'Erreur réseau. Vérifiez votre connexion internet.',
+    errServer: 'Les serveurs du fournisseur sont temporairement indisponibles.',
+    errGeneric: "Une erreur s'est produite."
   },
   de: {
     title: 'LayerCal',
@@ -601,7 +812,7 @@ export const TRANSLATIONS = {
     int8: 'INT8 (8-Bit)',
     // === NEW: AI Architecture Advisor ===
     aiAdvisor: 'KI-Architekturberater',
-    aiAdvisorDesc: 'Beschreiben Sie Ihr Modell — KI entwirft die Schichten',
+    aiAdvisorDesc: 'Beschreiben Sie Ihr Modell und die KI entwirft die Schichten',
     apiProvider: 'API-Anbieter',
     apiKeyPlaceholder: 'API-Schlüssel einfügen',
     apiKeySecurityNote: 'Lokal gespeichert. Wird niemals an unsere Server gesendet.',
@@ -613,7 +824,42 @@ export const TRANSLATIONS = {
     recommendedArch: 'Empfohlene Architektur',
     referencedModels: 'Referenz',
     examplePrompts: 'Versuchen Sie:',
-    toGenerate: 'zum Generieren'
+    toGenerate: 'zum Generieren',
+    // === Precision & estimation notes ===
+    bf16: 'BF16 (16-Bit)',
+    flopsNote: 'Vorwärtsdurchlauf · 224×224-Bilder, Sequenzen mit 512 Tokens',
+    memoryNoteInference: 'Nur Gewichte',
+    memoryNoteTraining: 'Gewichte + Gradienten + Adam-Zustände ≈ 16 Byte/Parameter, unabhängig von der Präzision',
+    // === Canvas actions ===
+    clearAll: 'Alle löschen',
+    layersCleared: 'Alle Schichten wurden entfernt.',
+    undo: 'Rückgängig',
+    moveUp: 'Schicht nach oben',
+    moveDown: 'Schicht nach unten',
+    skipToContent: 'Zum Inhalt springen',
+    dimMismatch: 'Setzen Sie {field} auf {n}, damit es zur vorherigen Schicht passt',
+    copyFailed: 'Kopieren fehlgeschlagen. Bitte markieren Sie den Code und kopieren Sie ihn manuell.',
+    exportFailed: 'Bildexport fehlgeschlagen. Bitte erneut versuchen.',
+    exportErrEmpty: 'Nichts zu exportieren. Fügen Sie zuerst eine Schicht hinzu.',
+    exportErrLoad: 'Der Bildexport konnte nicht geladen werden. Prüfen Sie Ihre Verbindung.',
+    // === AI Advisor: advanced settings ===
+    advanced: 'Erweitert',
+    modelLabel: 'Modell',
+    rememberKey: 'Schlüssel in diesem Browser merken',
+    clearKey: 'Löschen',
+    cancel: 'Abbrechen',
+    estimatedParams: 'Geschätzte Parameter',
+    tokensUsed: 'Tokens',
+    applyReplace: 'Arbeitsfläche ersetzen',
+    applyAppend: 'Anhängen',
+    // === AI Advisor: errors ===
+    errInvalidKey: 'Ungültiger oder nicht autorisierter API-Schlüssel. Prüfen Sie den Schlüssel dieses Anbieters.',
+    errRateLimit: 'Ratenlimit oder Kontingent überschritten. Bitte kurz warten und erneut versuchen.',
+    errModelNotFound: 'Dieses Modell ist nicht verfügbar. Es wurde möglicherweise eingestellt, wählen Sie unter Erweitert ein anderes.',
+    errTimeout: 'Zeitüberschreitung der Anfrage. Bitte erneut versuchen.',
+    errNetwork: 'Netzwerkfehler. Prüfen Sie Ihre Internetverbindung.',
+    errServer: 'Die Server des Anbieters sind vorübergehend nicht erreichbar.',
+    errGeneric: 'Etwas ist schiefgelaufen.'
   },
   pt: {
     title: 'LayerCal',
@@ -689,7 +935,7 @@ export const TRANSLATIONS = {
     int8: 'INT8 (8-bit)',
     // === NEW: AI Architecture Advisor ===
     aiAdvisor: 'Consultor de Arquitetura IA',
-    aiAdvisorDesc: 'Descreva seu modelo — a IA projeta as camadas',
+    aiAdvisorDesc: 'Descreva seu modelo e a IA projeta as camadas',
     apiProvider: 'Provedor de API',
     apiKeyPlaceholder: 'Cole sua chave de API',
     apiKeySecurityNote: 'Armazenada localmente. Nunca enviada aos nossos servidores.',
@@ -701,7 +947,42 @@ export const TRANSLATIONS = {
     recommendedArch: 'Arquitetura Recomendada',
     referencedModels: 'Referência',
     examplePrompts: 'Tente:',
-    toGenerate: 'para gerar'
+    toGenerate: 'para gerar',
+    // === Precision & estimation notes ===
+    bf16: 'BF16 (16-bit)',
+    flopsNote: 'Passagem direta · imagens 224×224, sequências de 512 tokens',
+    memoryNoteInference: 'Apenas pesos',
+    memoryNoteTraining: 'Pesos + gradientes + estados do Adam ≈ 16 bytes/parâmetro, independentemente da precisão',
+    // === Canvas actions ===
+    clearAll: 'Limpar tudo',
+    layersCleared: 'Todas as camadas foram removidas.',
+    undo: 'Desfazer',
+    moveUp: 'Mover camada para cima',
+    moveDown: 'Mover camada para baixo',
+    skipToContent: 'Ir para o conteúdo',
+    dimMismatch: 'Defina {field} como {n} para corresponder à camada anterior',
+    copyFailed: 'Falha ao copiar. Selecione o código e copie manualmente.',
+    exportFailed: 'Falha ao exportar a imagem. Tente novamente.',
+    exportErrEmpty: 'Nada para exportar. Adicione uma camada primeiro.',
+    exportErrLoad: 'Não foi possível carregar o exportador de imagens. Verifique sua conexão.',
+    // === AI Advisor: advanced settings ===
+    advanced: 'Avançado',
+    modelLabel: 'Modelo',
+    rememberKey: 'Lembrar a chave neste navegador',
+    clearKey: 'Limpar',
+    cancel: 'Cancelar',
+    estimatedParams: 'Parâmetros estimados',
+    tokensUsed: 'Tokens',
+    applyReplace: 'Substituir canvas',
+    applyAppend: 'Acrescentar',
+    // === AI Advisor: errors ===
+    errInvalidKey: 'Chave de API inválida ou sem autorização. Verifique a chave deste provedor.',
+    errRateLimit: 'Limite de requisições ou cota excedido. Aguarde um momento e tente novamente.',
+    errModelNotFound: 'Este modelo está indisponível. Pode ter sido descontinuado, escolha outro em Avançado.',
+    errTimeout: 'A solicitação expirou. Tente novamente.',
+    errNetwork: 'Erro de rede. Verifique sua conexão com a internet.',
+    errServer: 'Os servidores do provedor estão temporariamente indisponíveis.',
+    errGeneric: 'Algo deu errado.'
   }
 };
 
@@ -715,3 +996,17 @@ export const LANGUAGE_OPTIONS = [
   { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
   { code: 'pt', name: 'Português', flag: '🇵🇹' }
 ];
+
+/** Language codes the UI can render, for browser-language detection. */
+export const SUPPORTED_LANGUAGES = LANGUAGE_OPTIONS.map(o => o.code);
+
+/** Maps an LLMError code to a translation key; unlisted codes fall back to the provider's own message. */
+export const LLM_ERROR_KEYS = {
+  NO_API_KEY: 'errInvalidKey',
+  INVALID_KEY: 'errInvalidKey',
+  RATE_LIMIT: 'errRateLimit',
+  MODEL_NOT_FOUND: 'errModelNotFound',
+  TIMEOUT: 'errTimeout',
+  NETWORK_ERROR: 'errNetwork',
+  SERVER_ERROR: 'errServer',
+};

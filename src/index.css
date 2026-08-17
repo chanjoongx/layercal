@@ -17,9 +17,11 @@
     --card-foreground: 222.2 84% 4.9%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    
+
     --radius: 0.5rem;
   }
+
+  /* Toggled on <html> by LayerCal so the body background follows the theme. */
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
@@ -35,7 +37,85 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
+  /*
+   * The app mounts into an empty #root, and the static reference section sits
+   * below it. Without a reserved height that section paints at the top of the
+   * viewport and then jumps down when React renders, which is both jarring and
+   * a Cumulative Layout Shift hit. 100vh matches the app's own min-h-screen.
+   */
+  #root {
+    min-height: 100vh;
+  }
+
+  /*
+   * One focus style for the whole app. Several controls sit on saturated
+   * backgrounds where the browser default ring disappears entirely, which
+   * leaves keyboard users with no idea where they are.
+   */
+  :focus-visible {
+    outline: 2px solid #7c3aed;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .dark :focus-visible {
+    outline-color: #a78bfa;
+  }
+
+  /* A mouse click should not leave a ring behind. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background-color: rgb(196 181 253 / 0.55);
+    color: rgb(30 27 75);
+  }
+
+  .dark ::selection {
+    background-color: rgb(109 40 217 / 0.6);
+    color: rgb(243 244 246);
+  }
+}
+
+/*
+ * Respect the OS "reduce motion" setting. The UI leans on transitions and a
+ * spinner, both of which can trigger vestibular symptoms.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Skip link: visually hidden until focused, then pinned to the top-left.
+ */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  background-color: #7c3aed;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2);
 }

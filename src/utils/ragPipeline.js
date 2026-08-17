@@ -2,22 +2,27 @@
  * RAG Pipeline for AI Architecture Advisor
  *
  * Implements a Retrieval-Augmented Generation pattern:
- *   1. Retrieve  — keyword-match relevant architectures from the KB
- *   2. Augment   — build a system prompt with layer schema + references
- *   3. Generate  — call LLM via llmClient
- *   4. Validate  — parse JSON, snap invalid params, filter bad layers
+ *   1. Retrieve:  keyword-match relevant architectures from the KB
+ *   2. Augment:   build a system prompt with layer schema + references
+ *   3. Generate:  call LLM via llmClient
+ *   4. Validate:  parse JSON, snap invalid params, filter bad layers
  */
 
 import { callLLM } from './llmClient';
 import ARCHITECTURE_KB from '../config/architectureKB';
+import { DEFAULT_LAYER_PARAMS, LAYER_TYPE_IDS } from '../config/layerTypes';
 
 // ─────────────────────────────────────────────────────
-// 1. RETRIEVAL — keyword search over the knowledge base
+// 1. RETRIEVAL: keyword search over the knowledge base
 // ─────────────────────────────────────────────────────
 
 /**
  * Score each KB entry against the user query by counting
- * tag matches. Returns top-K entries sorted by relevance.
+ * tag matches. Returns up to topK entries sorted by relevance.
+ *
+ * Entries that match nothing are dropped rather than padded in:
+ * an irrelevant reference architecture in the prompt actively
+ * steers the model wrong.
  */
 export function retrieveArchitectures(query, topK = 3) {
   const tokens = tokenize(query);
@@ -44,12 +49,15 @@ export function retrieveArchitectures(query, topK = 3) {
     return { arch, score };
   });
 
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK).map(s => s.arch);
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map(s => s.arch);
 }
 
 function tokenize(text) {
-  return text
+  return String(text ?? '')
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')    // strip punctuation but keep hyphens
     .split(/\s+/)
@@ -68,7 +76,7 @@ const STOP_WORDS = new Set([
 
 
 // ─────────────────────────────────────────────────────
-// 2. PROMPT BUILDER — construct system & user prompts
+// 2. PROMPT BUILDER: construct system & user prompts
 // ─────────────────────────────────────────────────────
 
 /**
@@ -76,6 +84,7 @@ const STOP_WORDS = new Set([
  *
  * Derived from layerTypes.js field definitions.
  * Tells the LLM exactly which types and param values are valid.
+ * Must stay in sync with VALID_OPTIONS below.
  */
 const LAYER_SCHEMA = `Available layer types and their valid parameter values:
 
@@ -150,22 +159,22 @@ REFERENCE ARCHITECTURES (retrieved from knowledge base):
 ${refSection}
 
 RULES:
-1. Respond with ONLY a JSON array. No text before or after. No explanation. No markdown.
-2. Each object must have "type" (string) and "params" (object) fields.
+1. Respond with ONLY a JSON object of the form {"layers": [ ... ]}. No prose, no markdown, no explanation.
+2. Each entry in "layers" must have a "type" (string) and "params" (object).
 3. Use ONLY the layer types and param values listed above.
 4. Ensure layers connect logically:
-   - Conv2D out_channels should match next BatchNorm num_features
+   - Conv2D out_channels should match the next BatchNorm num_features
    - LSTM/GRU input_size should match the previous layer's output dimension
    - Linear input_dim should match the preceding layer's output
 5. If the user specifies a parameter budget, design accordingly.
 6. Include activation functions (relu) and regularization (dropout, batchnorm) where appropriate.
-7. Keep architectures practical — between 4 and 25 layers.
+7. Keep architectures practical, between 4 and 25 layers.
 
-CRITICAL: Your entire response must be parseable as JSON. Do not include any reasoning, thinking, or explanation. Start with [ and end with ].`;
+CRITICAL: Your entire response must be a single parseable JSON object. Do not include any reasoning, thinking, or explanation.`;
 
   const userPrompt = `Design a neural network for: ${userQuery}
 
-Respond with ONLY a JSON array. Start with [ and end with ].`;
+Respond with ONLY the JSON object {"layers": [ ... ]}.`;
 
   return { systemPrompt, userPrompt };
 }
@@ -181,7 +190,7 @@ function formatReferences(archs) {
 
 
 // ─────────────────────────────────────────────────────
-// 3. OUTPUT PARSER — LLM response → validated layers
+// 3. OUTPUT PARSER: LLM response to validated layers
 // ─────────────────────────────────────────────────────
 
 // Valid select-field options, mirroring layerTypes.js exactly
@@ -199,29 +208,11 @@ const VALID_OPTIONS = {
   avgpool2d: { kernel_size: [2, 3, 4] },
 };
 
-const VALID_LAYER_TYPES = new Set([
-  'embedding', 'linear', 'conv2d', 'lstm', 'gru',
-  'transformer', 'attention', 'batchnorm', 'layernorm',
-  'dropout', 'maxpool2d', 'avgpool2d', 'relu', 'softmax',
-]);
+const VALID_LAYER_TYPES = new Set(LAYER_TYPE_IDS);
 
-// Default params for each layer type (mirrors layerTypes.js)
-const DEFAULT_PARAMS = {
-  embedding: { vocab_size: 10000, embedding_dim: 128 },
-  linear: { input_dim: 512, output_dim: 256, use_bias: true },
-  conv2d: { in_channels: 3, out_channels: 64, kernel_size: 3, use_bias: true },
-  lstm: { input_size: 128, hidden_size: 256, num_layers: 1, bidirectional: false },
-  gru: { input_size: 128, hidden_size: 256, num_layers: 1, bidirectional: false },
-  transformer: { d_model: 512, num_heads: 8, d_ff: 2048, dropout: 0.1 },
-  attention: { d_model: 512, num_heads: 8 },
-  batchnorm: { num_features: 128 },
-  layernorm: { normalized_shape: 512 },
-  dropout: { rate: 0.1 },
-  maxpool2d: { kernel_size: 2 },
-  avgpool2d: { kernel_size: 2 },
-  relu: {},
-  softmax: {},
-};
+// Defaults come from layerTypes.js so the validator can never drift from the
+// canvas it feeds.
+const DEFAULT_PARAMS = DEFAULT_LAYER_PARAMS;
 
 
 /**
@@ -229,17 +220,7 @@ const DEFAULT_PARAMS = {
  * Handles markdown code blocks, invalid types, and out-of-range params.
  */
 export function parseAndValidateLayers(rawText) {
-  const jsonStr = extractJSON(rawText);
-  if (!jsonStr) {
-    throw new Error('Could not extract a JSON array from the response.');
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    throw new Error('Response contained invalid JSON.');
-  }
+  const parsed = extractLayerArray(rawText);
 
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error('Expected a non-empty JSON array of layers.');
@@ -254,7 +235,7 @@ export function parseAndValidateLayers(rawText) {
 
     const type = String(raw.type || '').toLowerCase().trim();
     if (!VALID_LAYER_TYPES.has(type)) {
-      warnings.push(`Layer ${i + 1}: unknown type "${raw.type}" — skipped.`);
+      warnings.push(`Layer ${i + 1}: unknown type "${raw.type}", skipped.`);
       continue;
     }
 
@@ -285,10 +266,10 @@ export function parseAndValidateLayers(rawText) {
       merged.rate = clampDropoutRate(merged.rate);
     }
     if ('use_bias' in merged) {
-      merged.use_bias = merged.use_bias === true || merged.use_bias === 'true' || merged.use_bias === 1;
+      merged.use_bias = toBoolean(merged.use_bias, true);
     }
     if ('bidirectional' in merged) {
-      merged.bidirectional = merged.bidirectional === true || merged.bidirectional === 'true' || merged.bidirectional === 1;
+      merged.bidirectional = toBoolean(merged.bidirectional, false);
     }
     if (type === 'embedding' && 'vocab_size' in merged) {
       merged.vocab_size = Math.max(1, Math.round(Number(merged.vocab_size) || 10000));
@@ -338,7 +319,7 @@ function fixCrossLayerDimensions(layers, warnings) {
             p.num_features = target;
           }
           if (target !== dim) {
-            // dim wasn't valid for BN — also fix the upstream layer that produced it
+            // dim wasn't valid for BN, so also fix the upstream layer that produced it
             reconcileUpstream(layers, i - 1, target, warnings);
             dim = target;
           }
@@ -410,7 +391,7 @@ function fixCrossLayerDimensions(layers, warnings) {
         dim = p.d_model;
         break;
 
-      // passthrough — don't change dim
+      // passthrough, so don't change dim
       case 'relu':
       case 'softmax':
       case 'dropout':
@@ -468,57 +449,138 @@ function reconcileUpstream(layers, fromIdx, target, warnings) {
         return;
       }
       default:
-        return;  // unknown source — can't fix, stop
+        return;  // unknown source, can't fix
     }
   }
 }
 
 
-function extractJSON(text) {
-  let cleaned = text;
+// ─── JSON extraction ─────────────────────────────────
 
-  // 1. strip thinking/reasoning blocks some models emit
-  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
-  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
-  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
+// Keys a model might wrap the layer list in when it returns an object.
+const WRAPPER_KEYS = ['layers', 'architecture', 'model', 'network', 'stack', 'result'];
 
-  // 2. strip markdown fences
-  cleaned = cleaned.replace(/```(?:json|JSON)?\s*([\s\S]*?)```/g, '$1');
-  cleaned = cleaned.replace(/^`([\s\S]*)`$/, '$1');
-  cleaned = cleaned.trim();
+/**
+ * Pull a layer array out of arbitrary LLM output.
+ *
+ * Providers in JSON mode return a clean object; providers without it return
+ * anything from a bare array to a fenced block wrapped in prose. Candidates
+ * are tried widest-first, and the array slice is tried before the object slice
+ * so a leading prose sentence can't collapse the result to its first layer.
+ */
+function extractLayerArray(rawText) {
+  const cleaned = stripNoise(String(rawText ?? ''));
 
-  // 3. try bracket-depth matching for outermost array
-  const start = cleaned.indexOf('[');
-  if (start !== -1) {
-    let depth = 0;
-    for (let i = start; i < cleaned.length; i++) {
-      if (cleaned[i] === '[') depth++;
-      else if (cleaned[i] === ']') depth--;
-      if (depth === 0) {
-        let slice = cleaned.slice(start, i + 1);
-        // fix trailing commas before ] (common LLM mistake)
-        slice = slice.replace(/,\s*]/g, ']');
-        return slice;
-      }
+  const candidates = [
+    cleaned,
+    sliceBalanced(cleaned, '[', ']'),
+    sliceBalanced(cleaned, '{', '}'),
+  ];
+
+  let sawJSONish = false;
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (/[[{]/.test(candidate)) sawJSONish = true;
+
+    let value;
+    try {
+      value = JSON.parse(repairCommonMistakes(candidate));
+    } catch {
+      continue;
     }
-    // unclosed bracket — try best effort
-    const end = cleaned.lastIndexOf(']');
-    if (end > start) return cleaned.slice(start, end + 1);
+
+    const layers = coerceToLayerArray(value);
+    if (layers) return layers;
   }
 
-  // 4. no array found — maybe the LLM returned a single object or comma-separated objects
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    return '[' + cleaned.slice(firstBrace, lastBrace + 1) + ']';
+  throw new Error(sawJSONish
+    ? 'Response contained invalid JSON.'
+    : 'Could not extract a JSON array from the response.');
+}
+
+function stripNoise(text) {
+  return text
+    // reasoning blocks some models emit around the answer
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+    // markdown fences
+    .replace(/```(?:json|JSON)?\s*([\s\S]*?)```/g, '$1')
+    .replace(/^`([\s\S]*)`$/, '$1')
+    .trim();
+}
+
+/**
+ * Extract the outermost balanced `open`...`close` span, or null.
+ *
+ * String contents are skipped, so a bracket inside a value (a stray "[" in a
+ * hallucinated description, say) cannot unbalance the count and truncate the
+ * slice halfway through the array.
+ */
+function sliceBalanced(text, open, close) {
+  const start = text.indexOf(open);
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+
+    if (ch === '"') { inString = true; continue; }
+
+    if (ch === open) depth++;
+    else if (ch === close) depth--;
+    if (depth === 0) return text.slice(start, i + 1);
   }
+
+  // unclosed, so fall back to the last closer
+  const end = text.lastIndexOf(close);
+  return end > start ? text.slice(start, end + 1) : null;
+}
+
+function repairCommonMistakes(json) {
+  // trailing commas before a closer are the most common LLM JSON slip
+  return json.replace(/,\s*([\]}])/g, '$1');
+}
+
+/** Normalise anything JSON-shaped into a flat array of layer objects. */
+function coerceToLayerArray(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return null;
+
+  for (const key of WRAPPER_KEYS) {
+    if (Array.isArray(value[key])) return value[key];
+  }
+
+  // any array of layer-shaped objects, whatever the key is called
+  for (const candidate of Object.values(value)) {
+    if (Array.isArray(candidate) && candidate.some(e => e && typeof e === 'object' && 'type' in e)) {
+      return candidate;
+    }
+  }
+
+  // a single layer returned bare
+  if (typeof value.type === 'string') return [value];
 
   return null;
 }
 
+
+// ─── Value coercion ──────────────────────────────────
+
 function snapToNearest(value, options) {
   const num = Number(value);
-  if (isNaN(num)) return options[0];
+  if (!Number.isFinite(num)) return options[0];
 
   let closest = options[0];
   let minDist = Math.abs(num - closest);
@@ -535,23 +597,34 @@ function snapToNearest(value, options) {
 
 function clampDropoutRate(val) {
   const num = Number(val);
-  if (isNaN(num)) return 0.1;
+  if (!Number.isFinite(num)) return 0.1;
   // round to nearest 0.1 and clamp
   return Math.min(1.0, Math.max(0.0, Math.round(num * 10) / 10));
 }
 
+function toBoolean(val, fallback) {
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'number') return val === 1;
+  if (typeof val === 'string') {
+    const s = val.trim().toLowerCase();
+    if (s === 'true' || s === '1' || s === 'yes') return true;
+    if (s === 'false' || s === '0' || s === 'no') return false;
+  }
+  return fallback;
+}
+
 
 // ─────────────────────────────────────────────────────
-// 4. ORCHESTRATOR — tie it all together
+// 4. ORCHESTRATOR: tie it all together
 // ─────────────────────────────────────────────────────
 
 /**
  * Full RAG pipeline:
  *   query → retrieve → prompt → LLM → parse → validated layers
  *
- * @returns {{ layers, references, warnings, usage }}
+ * @returns {{ layers, references, warnings, usage, model }}
  */
-export async function generateArchitecture({ query, provider, apiKey, model }) {
+export async function generateArchitecture({ query, provider, apiKey, model, signal }) {
   // Step 1: Retrieve
   const references = retrieveArchitectures(query, 3);
 
@@ -565,6 +638,7 @@ export async function generateArchitecture({ query, provider, apiKey, model }) {
     model,
     systemPrompt,
     userPrompt,
+    signal,
   });
 
   // Step 4: Parse & validate
@@ -575,5 +649,6 @@ export async function generateArchitecture({ query, provider, apiKey, model }) {
     references: references.map(r => ({ id: r.id, name: r.name })),
     warnings,
     usage: llmResult.usage,
+    model: llmResult.model,
   };
 }

@@ -8,9 +8,16 @@
 # because a CSP can only be validated in a real browser. If anything is blocked,
 # rename the header to Content-Security-Policy-Report-Only, ship, read the
 # console violations, then rename it back.
+#
+# HSTS is apex only. `includeSubDomains` would commit every current and future
+# subdomain to HTTPS for a year, and a browser that has already seen it cannot
+# be told to forget early. Add it once no subdomain is served over plain HTTP.
+#
+# Comments stay at column 0. An indented comment inside a rule block is not
+# documented, and a parse error here would silently drop every header below.
 
 /*
-  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Strict-Transport-Security: max-age=31536000
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin

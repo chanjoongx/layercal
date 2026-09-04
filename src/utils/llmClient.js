@@ -5,8 +5,9 @@
  * The user's API key never leaves their device except to the
  * provider's own endpoint.
  *
- * Model IDs are verified against provider docs as of 2026-08-17. Because a
- * BYOK tool has no way to hot-patch a retired model, every call accepts a
+ * Model IDs are verified against provider docs as of 2026-09-04, and the
+ * curated per-provider list lives in config/modelCatalog.js. Because a BYOK
+ * tool has no way to hot-patch a retired model, every call accepts a
  * caller-supplied `model` override and a retired model surfaces as a distinct
  * MODEL_NOT_FOUND error telling the user exactly what to do.
  */
@@ -16,11 +17,16 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
 /**
- * Default models: the current, cheapest capable tier per provider.
+ * Default models: the cheapest capable tier per provider, because the advisor
+ * emits a short JSON layer stack and a frontier model buys nothing for it.
  *
- * openai  gpt-5.6-luna         GA 2026-07-09, cost-optimised GPT-5.6 tier
- * gemini  gemini-3.5-flash-lite stable GA, free tier, fastest 3.5 tier
- * claude  claude-haiku-4-5     replaces claude-3-5-haiku, retired 2026-02-19
+ * openai  gpt-5.6-luna          cost-optimised GPT-5.6 tier, $0.20 / $1.20 per 1M
+ * gemini  gemini-3.5-flash-lite fastest 3.5 tier, free tier available
+ * claude  claude-haiku-4-5      $1 / $5 per 1M
+ *
+ * These must stay equal to the entries marked default in modelCatalog.js; a
+ * test pins them together, because showing one model and calling another is
+ * worse than showing none.
  */
 export const DEFAULT_MODELS = {
   openai: 'gpt-5.6-luna',
@@ -35,12 +41,20 @@ const MAX_OUTPUT_TOKENS = 8192;
 const REQUEST_TIMEOUT = 60_000; // 60s, because reasoning models routinely exceed 30s
 
 /**
- * GPT-5.x and the o-series renamed `max_tokens` to `max_completion_tokens`
- * and reject `temperature` outright. Everything older keeps the classic
- * parameters. Exported for tests and so the UI can explain the difference.
+ * GPT-5.x and later, and the o-series, renamed `max_tokens` to
+ * `max_completion_tokens` and reject `temperature` outright. Everything older
+ * keeps the classic parameters.
+ *
+ * The pattern deliberately covers GPT-5 through GPT-9 and any future
+ * two-or-more-digit generation: an earlier version matched only `gpt-5`, so
+ * `gpt-6-astra` fell through to the legacy branch and every request paid for a
+ * rejected round trip before the retry fixed it. `gpt-4*` still routes to the
+ * legacy shape, which is the whole reason this is a predicate and not a flag.
+ *
+ * Exported for tests and so the UI can explain the difference.
  */
 export function isOpenAIReasoningModel(model) {
-  return /^(gpt-5|o[1-9])/i.test(String(model || ''));
+  return /^(?:gpt-(?:[5-9]|\d{2,})|o[1-9])/i.test(String(model || ''));
 }
 
 /**

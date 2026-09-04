@@ -24,7 +24,7 @@ const stubT = new Proxy({}, {
 let layers
 
 beforeAll(() => {
-  layers = getLayerTypes(stubT, false)
+  layers = getLayerTypes(stubT)
 })
 
 

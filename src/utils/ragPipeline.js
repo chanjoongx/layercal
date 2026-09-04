@@ -98,37 +98,37 @@ linear:
   - use_bias: true or false (default: true)
 
 conv2d:
-  - in_channels: one of [1, 3, 16, 32, 64, 128, 256]
+  - in_channels: one of [1, 3, 16, 32, 64, 128, 256, 512]
   - out_channels: one of [16, 32, 64, 128, 256, 512]
   - kernel_size: one of [1, 3, 5, 7]
   - use_bias: true or false (default: true)
 
 lstm:
-  - input_size: one of [64, 128, 256, 512, 768]
+  - input_size: one of [64, 128, 256, 512, 768, 1024, 1536, 2048]
   - hidden_size: one of [128, 256, 512, 768, 1024]
   - num_layers: one of [1, 2, 3, 4]
   - bidirectional: true or false (default: false)
 
 gru:
-  - input_size: one of [64, 128, 256, 512, 768]
+  - input_size: one of [64, 128, 256, 512, 768, 1024, 1536, 2048]
   - hidden_size: one of [128, 256, 512, 768, 1024]
   - num_layers: one of [1, 2, 3, 4]
   - bidirectional: true or false (default: false)
 
 transformer:
-  - d_model: one of [256, 512, 768, 1024]
+  - d_model: one of [64, 128, 256, 512, 768, 1024]
   - num_heads: one of [4, 8, 12, 16]
   - d_ff: one of [1024, 2048, 3072, 4096]
 
 attention:
-  - d_model: one of [256, 512, 768, 1024]
+  - d_model: one of [64, 128, 256, 512, 768, 1024]
   - num_heads: one of [4, 8, 12, 16]
 
 batchnorm:
   - num_features: one of [16, 32, 64, 128, 256, 512, 768, 1024]
 
 layernorm:
-  - normalized_shape: one of [128, 256, 512, 768, 1024]
+  - normalized_shape: one of [16, 32, 64, 128, 256, 512, 768, 1024]
 
 dropout:
   - rate: number between 0.0 and 1.0 (step 0.1)
@@ -197,13 +197,13 @@ function formatReferences(archs) {
 const VALID_OPTIONS = {
   embedding: { embedding_dim: [64, 128, 256, 512, 768, 1024] },
   linear: { input_dim: [64, 128, 256, 512, 768, 1024, 2048], output_dim: [64, 128, 256, 512, 768, 1024, 2048] },
-  conv2d: { in_channels: [1, 3, 16, 32, 64, 128, 256], out_channels: [16, 32, 64, 128, 256, 512], kernel_size: [1, 3, 5, 7] },
-  lstm: { input_size: [64, 128, 256, 512, 768], hidden_size: [128, 256, 512, 768, 1024], num_layers: [1, 2, 3, 4] },
-  gru: { input_size: [64, 128, 256, 512, 768], hidden_size: [128, 256, 512, 768, 1024], num_layers: [1, 2, 3, 4] },
-  transformer: { d_model: [256, 512, 768, 1024], num_heads: [4, 8, 12, 16], d_ff: [1024, 2048, 3072, 4096] },
-  attention: { d_model: [256, 512, 768, 1024], num_heads: [4, 8, 12, 16] },
+  conv2d: { in_channels: [1, 3, 16, 32, 64, 128, 256, 512], out_channels: [16, 32, 64, 128, 256, 512], kernel_size: [1, 3, 5, 7] },
+  lstm: { input_size: [64, 128, 256, 512, 768, 1024, 1536, 2048], hidden_size: [128, 256, 512, 768, 1024], num_layers: [1, 2, 3, 4] },
+  gru: { input_size: [64, 128, 256, 512, 768, 1024, 1536, 2048], hidden_size: [128, 256, 512, 768, 1024], num_layers: [1, 2, 3, 4] },
+  transformer: { d_model: [64, 128, 256, 512, 768, 1024], num_heads: [4, 8, 12, 16], d_ff: [1024, 2048, 3072, 4096] },
+  attention: { d_model: [64, 128, 256, 512, 768, 1024], num_heads: [4, 8, 12, 16] },
   batchnorm: { num_features: [16, 32, 64, 128, 256, 512, 768, 1024] },
-  layernorm: { normalized_shape: [128, 256, 512, 768, 1024] },
+  layernorm: { normalized_shape: [16, 32, 64, 128, 256, 512, 768, 1024] },
   maxpool2d: { kernel_size: [2, 3, 4] },
   avgpool2d: { kernel_size: [2, 3, 4] },
 };

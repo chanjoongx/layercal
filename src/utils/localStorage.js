@@ -128,21 +128,7 @@ export const detectSystemDarkMode = () => {
 };
 
 /**
- * Detect browser language
- * @returns {string} Language code (e.g. 'en', 'ko', 'ja')
- */
-export const detectBrowserLanguage = () => {
-  if (typeof window !== 'undefined' && window.navigator) {
-    const lang = window.navigator.languages?.[0] || window.navigator.language;
-    if (typeof lang === 'string' && lang.length > 0) {
-      return lang.split('-')[0].toLowerCase();
-    }
-  }
-  return 'en';
-};
-
-/**
- * Resolve the initial UI language: saved choice → browser language → 'en'.
+ * Resolve the initial UI language: saved choice, otherwise English.
  * @param {string} storageKey - localStorage key holding the saved choice
  * @param {string[]} supported - Supported language codes
  */
@@ -150,8 +136,9 @@ export const resolveInitialLanguage = (storageKey, supported) => {
   const saved = safeLocalStorage.getItem(storageKey);
   if (saved && supported.includes(saved)) return saved;
 
-  const browser = detectBrowserLanguage();
-  if (supported.includes(browser)) return browser;
-
-  return 'en';
+  // English is the default for everyone. The browser's language used to win
+  // here, which meant a Korean or Japanese visitor landed on a translated page
+  // they never asked for, and the shared screenshots and links in the docs did
+  // not match what they saw. An explicit choice still persists.
+  return supported.includes('en') ? 'en' : supported[0];
 };

@@ -162,8 +162,21 @@ export default function ModelViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engineEpoch]);
 
+  // Adding or removing a layer changes the shape of the model, so the camera
+  // refits; editing a parameter does not, because refitting on every keystroke
+  // would make the view lurch while someone types. The orbit angle is kept -
+  // only the distance and the centre move - so this reads as the frame
+  // following the model rather than the camera being taken away.
+  const nodeCountRef = useRef(scene.nodes.length);
+
   useEffect(() => {
-    engineRef.current?.setScene(scene);
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.setScene(scene);
+    if (scene.nodes.length !== nodeCountRef.current) {
+      nodeCountRef.current = scene.nodes.length;
+      engine.frameAll();
+    }
   }, [scene]);
 
   useEffect(() => {

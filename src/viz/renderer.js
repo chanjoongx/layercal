@@ -54,47 +54,61 @@ const QUALITY = [
  */
 const THEMES = {
   light: {
-    skyTop: [0.960, 0.966, 0.985],
-    skyBottom: [0.878, 0.892, 0.936],
-    skyGlow: [0.030, 0.020, 0.055],
-    sky: [0.72, 0.77, 0.94],
-    ground: [0.34, 0.36, 0.46],
-    key: [1.0, 0.98, 0.94],
-    grid: [0.20, 0.23, 0.34],
-    accent: [0.49, 0.35, 0.92],
-    warn: [0.85, 0.42, 0.05],
-    exposure: 1.0,
-    bloom: 0.45,
-    gridOpacity: 1.0,
-    shadow: 0.8,
-    ribbon: 1.35,
-    particle: 1.1,
-    shell: 0.3,
-    grain: 0.008,
-    saturation: 1.16,
+    // Not paper-white. Muted layers need something to sit against, and a panel
+    // that is pure white makes every one of them look washed out no matter how
+    // the material is lit.
+    skyTop: [0.906, 0.914, 0.933],
+    skyBottom: [0.812, 0.826, 0.859],
+    skyGlow: [0.014, 0.014, 0.020],
+    // Held well below the dark theme's: on a near-white ground the ambient is
+    // already most of the light, and at the old level every layer washed out to
+    // pastel before the fog even touched it.
+    sky: [0.46, 0.50, 0.60],
+    ground: [0.18, 0.20, 0.26],
+    key: [1.0, 0.99, 0.96],
+    grid: [0.30, 0.33, 0.41],
+    accent: [0.40, 0.43, 0.52],
+    warn: [0.78, 0.38, 0.06],
+    exposure: 0.95,
+    bloom: 0.16,
+    gridOpacity: 0.70,
+    shadow: 0.72,
+    ribbon: 0.62,
+    particle: 0.42,
+    shell: 0.0,
+    grain: 0.006,
+    saturation: 1.18,
+    // A quarter of the dark theme's, and the asymmetry is the whole point.
+    // Fog mixes toward the background in *scene* space, and inverse-ACES sends
+    // a near-white background to ~1.2 there - so on a light ground even a tenth
+    // of fog adds more absolute light than the layer's own darkest channel
+    // carries, and a teal lands as pale mint. The depth cue is worth keeping;
+    // it just has to be a whisper here and can be a voice on a dark ground.
+    fogDensity: 0.045,
     // Additive light on a near-white ground clips to white and loses the hue
     // that carries the meaning, so the light theme composites over instead.
     additive: false,
   },
   dark: {
-    skyTop: [0.055, 0.065, 0.115],
-    skyBottom: [0.012, 0.014, 0.026],
-    skyGlow: [0.055, 0.045, 0.115],
-    sky: [0.10, 0.13, 0.26],
-    ground: [0.02, 0.02, 0.04],
-    key: [0.92, 0.94, 1.0],
-    grid: [0.30, 0.35, 0.52],
-    accent: [0.55, 0.42, 0.98],
+    skyTop: [0.072, 0.082, 0.108],
+    skyBottom: [0.024, 0.027, 0.038],
+    skyGlow: [0.018, 0.021, 0.034],
+    sky: [0.12, 0.14, 0.20],
+    ground: [0.030, 0.032, 0.042],
+    key: [0.95, 0.95, 1.0],
+    grid: [0.17, 0.19, 0.25],
+    accent: [0.30, 0.34, 0.44],
     warn: [1.0, 0.62, 0.20],
-    exposure: 1.18,
-    bloom: 1.05,
-    gridOpacity: 0.42,
-    shadow: 0.7,
-    ribbon: 0.8,
-    particle: 0.8,
-    shell: 1.0,
-    grain: 0.012,
-    saturation: 1.22,
+    exposure: 1.10,
+    bloom: 0.32,
+    gridOpacity: 0.34,
+    shadow: 0.75,
+    ribbon: 0.42,
+    particle: 0.30,
+    shell: 0.30,
+    grain: 0.010,
+    saturation: 1.08,
+    fogDensity: 0.52,
     additive: true,
   },
 };
@@ -133,6 +147,9 @@ function toSceneColor(srgb, exposure) {
 for (const theme of Object.values(THEMES)) {
   theme.skyTopScene = toSceneColor(theme.skyTop, theme.exposure);
   theme.skyBottomScene = toSceneColor(theme.skyBottom, theme.exposure);
+  // Layers recede into the same colour the background is painted with, so the
+  // fog term needs it in scene space too.
+  theme.fogScene = theme.skyTopScene.map((v, i) => (v + theme.skyBottomScene[i]) * 0.5);
 }
 
 /**
@@ -184,12 +201,13 @@ export function createRenderer(canvas, options = {}) {
   const boxIndexBuffer = createBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, box.indices, gl.STATIC_DRAW);
   const quadBuffer = createBuffer(gl, gl.ARRAY_BUFFER, QUAD_CORNERS, gl.STATIC_DRAW);
 
-  const slabInstanceBuffer = gl.createBuffer();
+  const sliceInstanceBuffer = gl.createBuffer();
+  const nodeInstanceBuffer = gl.createBuffer();
   const particleBuffer = gl.createBuffer();
   const ribbonVertexBuffer = gl.createBuffer();
   const ribbonIndexBuffer = gl.createBuffer();
 
-  const boxStreams = (instanceLocations) => ([
+  const boxStreams = (instanceBuffer) => ([
     {
       buffer: boxVertexBuffer,
       stride: box.stride,
@@ -200,25 +218,27 @@ export function createRenderer(canvas, options = {}) {
       ],
     },
     {
-      buffer: slabInstanceBuffer,
+      buffer: instanceBuffer,
       stride: SLAB_STRIDE,
-      attribs: instanceLocations,
+      attribs: [
+        { location: 3, size: 4, offset: 0, divisor: 1 },
+        { location: 4, size: 4, offset: 16, divisor: 1 },
+        { location: 5, size: 4, offset: 32, divisor: 1 },
+        { location: 6, size: 4, offset: 48, divisor: 1 },
+        { location: 7, size: 4, offset: 64, divisor: 1 },
+      ],
     },
   ]);
 
-  const slabVAO = createVAO(gl, boxStreams([
-    { location: 3, size: 4, offset: 0, divisor: 1 },
-    { location: 4, size: 4, offset: 16, divisor: 1 },
-    { location: 5, size: 4, offset: 32, divisor: 1 },
-    { location: 6, size: 4, offset: 48, divisor: 1 },
-    { location: 7, size: 4, offset: 64, divisor: 1 },
-  ]), boxIndexBuffer);
+  // Slabs are drawn per slice; the halo and the contact shadow are drawn once
+  // per layer, because N overlapping glows or shadows stack into a smear.
+  const slabVAO = createVAO(gl, boxStreams(sliceInstanceBuffer), boxIndexBuffer);
+  const shellVAO = createVAO(gl, boxStreams(nodeInstanceBuffer), boxIndexBuffer);
 
-  // Contact shadows read the same instance buffer: one upload, two consumers.
   const shadowVAO = createVAO(gl, [
     { buffer: quadBuffer, stride: 8, attribs: [{ location: 0, size: 2, offset: 0 }] },
     {
-      buffer: slabInstanceBuffer,
+      buffer: nodeInstanceBuffer,
       stride: SLAB_STRIDE,
       attribs: [
         { location: 1, size: 4, offset: 0, divisor: 1 },
@@ -274,36 +294,89 @@ export function createRenderer(canvas, options = {}) {
   /** @type {{scene: object|null, bloom: object[], temp: object[]}} */
   const targets = { scene: null, bloom: [], temp: [] };
 
-  let instanceCount = 0;
+  let nodeCount = 0;
   let ribbonIndexCount = 0;
   let particleCount = 0;
+  /** Which layer each slice instance belongs to, for selection highlighting. */
+  const sliceOwner = [];
 
   // ── scene upload ────────────────────────────────────
 
+  /**
+   * How many planes a layer is drawn as. Derived from the channel count, so a
+   * 512-channel convolution is visibly a deeper stack than a 32-channel one,
+   * and capped because past about nine the planes stop being countable and
+   * start being noise.
+   */
+  function sliceCount(node) {
+    if (node.annotation) return 1;
+    const kind = node.shape && node.shape.kind;
+    // A dense layer emits a vector, not a stack of feature maps. Slicing its
+    // thin plate turned it into a comb and claimed a structure it does not have.
+    if (kind === 'vector') return 1;
+    const channels = (node.shape && node.shape.channels) || 32;
+    const cap = kind === 'sequence' ? 7 : 9;
+    return Math.round(clamp(Math.log2(Math.max(2, channels)) - 1, 2, cap));
+  }
+
+  /** Cells across a feature-map face, for the faint grid on spatial layers. */
+  function faceCells(node) {
+    if (!node.shape || node.shape.kind !== 'spatial') return 0;
+    const side = node.shape.dims[1] || 0;
+    return Math.round(clamp(Math.log2(Math.max(2, side)) - 1, 2, 8));
+  }
+
+  function writeInstance(data, o, node, center, extent, meta) {
+    const base = toLinear(node.paint.base);
+    const glow = toLinear(node.paint.glow);
+    data[o] = center.x; data[o + 1] = center.y; data[o + 2] = center.z; data[o + 3] = node.phase;
+    data[o + 4] = extent.w; data[o + 5] = extent.h; data[o + 6] = extent.d; data[o + 7] = meta;
+    data[o + 8] = base[0]; data[o + 9] = base[1]; data[o + 10] = base[2]; data[o + 11] = node.paramShare;
+    data[o + 12] = glow[0]; data[o + 13] = glow[1]; data[o + 14] = glow[2]; data[o + 15] = node.warning ? 1 : 0;
+    data[o + 16] = 0; data[o + 17] = 0; data[o + 18] = node.annotation ? 1 : 0; data[o + 19] = node.flopShare;
+  }
+
   function uploadScene() {
     const nodes = scene.nodes;
-    instanceCount = nodes.length;
+    nodeCount = nodes.length;
+    sliceOwner.length = 0;
 
-    if (instanceCount > 0) {
-      const data = new Float32Array(instanceCount * 20);
-      for (let i = 0; i < instanceCount; i++) {
-        const n = nodes[i];
-        const base = toLinear(n.paint.base);
-        const glow = toLinear(n.paint.glow);
-        const channels = n.shape && n.shape.channels ? n.shape.channels : 64;
-        // Lattice frequency from the channel count: a 512-channel layer should
-        // visibly have finer internal structure than a 16-channel one.
-        const lattice = clamp(2 + Math.log2(Math.max(2, channels)), 3, 14);
-
-        const o = i * 20;
-        data[o] = n.center.x; data[o + 1] = n.center.y; data[o + 2] = n.center.z; data[o + 3] = n.phase;
-        data[o + 4] = n.extent.w; data[o + 5] = n.extent.h; data[o + 6] = n.extent.d; data[o + 7] = lattice;
-        data[o + 8] = base[0]; data[o + 9] = base[1]; data[o + 10] = base[2]; data[o + 11] = n.paramShare;
-        data[o + 12] = glow[0]; data[o + 13] = glow[1]; data[o + 14] = glow[2]; data[o + 15] = n.warning ? 1 : 0;
-        data[o + 16] = 0; data[o + 17] = 0; data[o + 18] = n.annotation ? 1 : 0; data[o + 19] = n.flopShare;
+    if (nodeCount > 0) {
+      const nodeData = new Float32Array(nodeCount * 20);
+      for (let i = 0; i < nodeCount; i++) {
+        const node = nodes[i];
+        writeInstance(nodeData, i * 20, node, node.center, node.extent, 0);
+        for (let k = 0; k < sliceCount(node); k++) sliceOwner.push(i);
       }
-      gl.bindBuffer(gl.ARRAY_BUFFER, slabInstanceBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER, nodeInstanceBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, nodeData, gl.DYNAMIC_DRAW);
+
+      const sliceData = new Float32Array(sliceOwner.length * 20);
+      let s = 0;
+      for (let i = 0; i < nodeCount; i++) {
+        const node = nodes[i];
+        const n = sliceCount(node);
+        const cells = faceCells(node);
+
+        // n plates and n-1 gaps fill the layer's depth. The gap is a fraction
+        // of a plate, so a deep stack stays a stack rather than becoming a comb.
+        const gapRatio = n > 1 ? 0.55 : 0;
+        const thickness = node.extent.d / (n + (n - 1) * gapRatio);
+        const step = thickness * (1 + gapRatio);
+        const start = -node.extent.d / 2 + thickness / 2;
+
+        for (let k = 0; k < n; k++) {
+          writeInstance(
+            sliceData, s * 20, node,
+            { x: node.center.x, y: node.center.y, z: node.center.z + start + k * step },
+            { w: node.extent.w, h: node.extent.h, d: thickness },
+            cells
+          );
+          s++;
+        }
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER, sliceInstanceBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, sliceData, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
@@ -486,15 +559,26 @@ export function createRenderer(canvas, options = {}) {
     particleCount = total;
   }
 
-  /** Patch the selection flags in place rather than rebuilding the buffer. */
+  /** Patch the selection flags in place rather than rebuilding the buffers. */
   function applySelection() {
-    if (instanceCount === 0) return;
+    if (nodeCount === 0) return;
     const patch = new Float32Array(2);
-    gl.bindBuffer(gl.ARRAY_BUFFER, slabInstanceBuffer);
-    for (let i = 0; i < scene.nodes.length; i++) {
-      const node = scene.nodes[i];
-      patch[0] = node.id === selectedId ? 1 : 0;
-      patch[1] = node.id === hoveredId ? 1 : 0;
+    const flags = scene.nodes.map(node => [
+      node.id === selectedId ? 1 : 0,
+      node.id === hoveredId ? 1 : 0,
+    ]);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, nodeInstanceBuffer);
+    for (let i = 0; i < flags.length; i++) {
+      patch[0] = flags[i][0]; patch[1] = flags[i][1];
+      gl.bufferSubData(gl.ARRAY_BUFFER, i * SLAB_STRIDE + 64, patch);
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, sliceInstanceBuffer);
+    for (let i = 0; i < sliceOwner.length; i++) {
+      const owner = flags[sliceOwner[i]];
+      if (!owner) continue;
+      patch[0] = owner[0]; patch[1] = owner[1];
       gl.bufferSubData(gl.ARRAY_BUFFER, i * SLAB_STRIDE + 64, patch);
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -624,17 +708,17 @@ export function createRenderer(canvas, options = {}) {
     }
 
     // 2. contact shadows ----------------------------
-    if (instanceCount > 0) {
+    if (nodeCount > 0) {
       gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
       const u = use(programs.shadow);
       uMat(u, 'uViewProj', camera.viewProjection);
       u1f(u, 'uStrength', theme.shadow);
       gl.bindVertexArray(shadowVAO);
-      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, instanceCount);
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nodeCount);
     }
 
     // 3. slabs --------------------------------------
-    if (instanceCount > 0) {
+    if (nodeCount > 0) {
       gl.disable(gl.BLEND);
       gl.depthMask(true);
       gl.enable(gl.CULL_FACE);
@@ -652,25 +736,42 @@ export function createRenderer(canvas, options = {}) {
       u3v(u, 'uGroundColor', theme.ground);
       u3v(u, 'uKeyColor', theme.key);
       u3v(u, 'uWarnColor', theme.warn);
+      u3v(u, 'uFogColor', theme.fogScene);
+      // Tied to the model's own size, so the depth cue is the same whether the
+      // stack is three layers or sixty.
+      const modelRadius = Math.max(1, scene.bounds.radius);
+      u1f(u, 'uFogNear', modelRadius * 0.7);
+      u1f(u, 'uFogDensity', theme.fogDensity / modelRadius);
       gl.bindVertexArray(slabVAO);
-      gl.drawElementsInstanced(gl.TRIANGLES, box.indices.length, gl.UNSIGNED_SHORT, 0, instanceCount);
+      gl.drawElementsInstanced(gl.TRIANGLES, box.indices.length, gl.UNSIGNED_SHORT, 0, sliceOwner.length);
 
       // 4. halo shell -------------------------------
-      gl.enable(gl.BLEND);
-      flowBlend();
-      gl.depthMask(false);
-      gl.cullFace(gl.FRONT);
-      const s = use(programs.shell);
-      uMat(s, 'uViewProj', camera.viewProjection);
-      u3v(s, 'uCameraPos', camera.eye);
-      u1f(s, 'uTime', time);
-      u1f(s, 'uMotion', motionFlag);
-      u1f(s, 'uPulseRate', 0.28);
-      u1f(s, 'uPulseWidth', 6.0);
-      u1f(s, 'uShellScale', 1.18);
-      u1f(s, 'uShellOpacity', theme.shell);
-      gl.drawElementsInstanced(gl.TRIANGLES, box.indices.length, gl.UNSIGNED_SHORT, 0, instanceCount);
+      // Sized to the whole layer rather than a plate, because a halo cut to a
+      // plate would strobe with the gaps between them. It is off entirely in
+      // the light theme: it renders behind the plates, so it shows through
+      // those same gaps, and on a light ground that reads as a pale film over
+      // every layer rather than as a glow.
+      if (theme.shell > 0) {
+        gl.enable(gl.BLEND);
+        flowBlend();
+        gl.depthMask(false);
+        gl.cullFace(gl.FRONT);
+        const s = use(programs.shell);
+        uMat(s, 'uViewProj', camera.viewProjection);
+        u3v(s, 'uCameraPos', camera.eye);
+        u1f(s, 'uTime', time);
+        u1f(s, 'uMotion', motionFlag);
+        u1f(s, 'uPulseRate', 0.28);
+        u1f(s, 'uPulseWidth', 6.0);
+        u1f(s, 'uShellScale', 1.18);
+        u1f(s, 'uShellOpacity', theme.shell);
+        gl.bindVertexArray(shellVAO);
+        gl.drawElementsInstanced(gl.TRIANGLES, box.indices.length, gl.UNSIGNED_SHORT, 0, nodeCount);
+      }
+
+      // Leave the state the flow passes expect, whether or not the shell drew.
       gl.disable(gl.CULL_FACE);
+      gl.depthMask(false);
     }
 
     // 5. ribbons ------------------------------------
@@ -1198,10 +1299,10 @@ export function createRenderer(canvas, options = {}) {
 
       disposeTargets();
       Object.values(programs).forEach(p => gl.deleteProgram(p.program));
-      [boxVertexBuffer, boxIndexBuffer, quadBuffer, slabInstanceBuffer,
-        particleBuffer, ribbonVertexBuffer, ribbonIndexBuffer]
+      [boxVertexBuffer, boxIndexBuffer, quadBuffer, sliceInstanceBuffer,
+        nodeInstanceBuffer, particleBuffer, ribbonVertexBuffer, ribbonIndexBuffer]
         .forEach(b => gl.deleteBuffer(b));
-      [slabVAO, shadowVAO, particleVAO, ribbonVAO, gridVAO]
+      [slabVAO, shellVAO, shadowVAO, particleVAO, ribbonVAO, gridVAO]
         .forEach(v => gl.deleteVertexArray(v));
 
       // Browsers cap live contexts at about 16. Without this an unmount in

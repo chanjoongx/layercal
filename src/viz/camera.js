@@ -42,6 +42,7 @@ export function createCamera() {
     maxRadius: 60,
 
     idleFor: 0,
+    userPosed: false,
     driftEnabled: true,
 
     // In-flight focus animation, or null.
@@ -58,24 +59,156 @@ export function createCamera() {
   return state;
 }
 
+/** Margin enough for the floating HTML labels, and no more. */
+const FIT_MARGIN = 1.035;
+const FIT_PAD = 0.14;
+
+/** Square-on to the flow axis, and the most oblique the composer may go. */
+const COMPOSE_SQUARE = -Math.PI / 2;
+const COMPOSE_OBLIQUE = -0.86;
+
+// Scratch vectors: the framing solve scans a couple of dozen candidate angles
+// and would otherwise allocate three vectors for each one.
+const fitRight = vec3.create();
+const fitUp = vec3.create();
+const fitForward = vec3.create();
+const fitCorners = new Float64Array(24);
+
 /**
- * Frame the scene so every node fits.
+ * Fit the bounding box at one orbit angle.
  *
  * The naive version fits the bounding *sphere* into the vertical field of view.
- * That is wrong for this app's normal case by a wide margin: a 16-layer stack
- * is a long, thin box, its bounding sphere is dominated by its length, and
- * fitting that sphere vertically backs the camera off far enough to render the
- * model as a smudge in the middle of an empty grid.
+ * That is wrong for this app's normal case by a wide margin: a 16-layer stack is
+ * a long, thin box, its bounding sphere is dominated by its length, and fitting
+ * that sphere vertically backs the camera off far enough to render the model as
+ * a smudge in the middle of an empty grid.
  *
- * So project the actual box half-extents onto the camera's own right/up/forward
- * axes and fit those. The result is tight on both axes at any orbit angle.
+ * So solve per corner instead. A corner sits at depth `f` in front of the
+ * target, so it fits when `distance >= |offset| / tan + f`; the maximum over the
+ * eight corners is exact and tight at any angle. Summing the half-extents is the
+ * other near-miss - it adds the box's whole depth, which for a long stack seen
+ * nearly side-on is a quarter of its length, and the camera ends up that much
+ * too far back.
+ *
+ * @returns {{distance: number, coverage: number}} `coverage` is the fraction of
+ *   the panel's area the model covers once fitted, which is what the composer
+ *   maximises.
  */
-export function frameBounds(camera, bounds, aspect) {
-  const right = vec3.create();
-  const up = vec3.create();
-  const forward = vec3.create();
-  orbitBasis(camera.desiredTheta, camera.desiredPhi, right, up, forward);
+function fitAt(half, theta, phi, tanV, tanH, halfY, midY) {
+  orbitBasis(theta, phi, fitRight, fitUp, fitForward);
 
+  for (let i = 0; i < 8; i++) {
+    const cx = (i & 1 ? half[0] : -half[0]);
+    const cy = (i & 2 ? half[1] : -half[1]);
+    const cz = (i & 4 ? half[2] : -half[2]);
+    fitCorners[i * 3] = cx * fitRight[0] + cy * fitRight[1] + cz * fitRight[2];
+    fitCorners[i * 3 + 1] = cx * fitUp[0] + cy * fitUp[1] + cz * fitUp[2];
+    fitCorners[i * 3 + 2] = cx * fitForward[0] + cy * fitForward[1] + cz * fitForward[2];
+  }
+
+  // Fitting alone is not enough to use the panel. Under perspective the near end
+  // of a long stack is magnified, so a frame that fits every corner has the
+  // model touching one edge with a quarter of the panel empty at the other - it
+  // measured 26% dead on the left against 4% on the right. So solve for the
+  // aim point as well: fit, see where the projection actually sits, slide the
+  // target to centre it, and fit again. Three passes is comfortably convergent.
+  // The panel is not all usable: the metric chips sit across the top and the
+  // family legend across the bottom, and the layer labels ride above the layers
+  // they name. Fitting to the raw canvas tucked the first label behind the
+  // chips. `halfY` is the share of the frame's height that is actually free and
+  // `midY` where the middle of it sits.
+  const tanVFit = tanV * halfY;
+
+  let offsetR = 0;
+  let offsetU = 0;
+  let distance = 0;
+  let coverage = 0;
+
+  for (let pass = 0; pass < 3; pass++) {
+    distance = 0;
+    for (let i = 0; i < 8; i++) {
+      const r = fitCorners[i * 3] - offsetR;
+      const u = fitCorners[i * 3 + 1] - offsetU;
+      const f = fitCorners[i * 3 + 2];
+      distance = Math.max(distance, Math.abs(r) / tanH + f, Math.abs(u) / tanVFit + f);
+    }
+    distance = distance * FIT_MARGIN + FIT_PAD;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      const z = Math.max(distance - fitCorners[i * 3 + 2], 1e-3);
+      const x = (fitCorners[i * 3] - offsetR) / (z * tanH);
+      const y = (fitCorners[i * 3 + 1] - offsetU) / (z * tanVFit);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    // The frame spans -1..1 on both axes, so a span of 2 covers it completely.
+    coverage = ((maxX - minX) / 2) * ((maxY - minY) / 2);
+
+    const errorX = (minX + maxX) / 2;
+    const errorY = (minY + maxY) / 2;
+    if (Math.abs(errorX) < 1e-4 && Math.abs(errorY) < 1e-4) break;
+    offsetR += errorX * distance * tanH;
+    offsetU += errorY * distance * tanVFit;
+  }
+
+  // Finally bias the model into the free part of the frame. Moving the target
+  // up moves the model down the screen, which is why this is negated.
+  return { distance, coverage, offsetR, offsetU: offsetU - midY * distance * tanV };
+}
+
+/**
+ * The orbit azimuth that fills the panel best.
+ *
+ * Seen square-on, a sixteen-layer chain is about six times wider than it is
+ * tall. In a three-to-one panel that wastes two thirds of the height, which is
+ * the single biggest reason the view used to look empty. Turning the camera
+ * toward the end of the chain foreshortens it into something closer to the
+ * panel's own proportions.
+ *
+ * It has to be solved rather than tuned, because the right angle depends on the
+ * model: the same rotation that gains a long chain twenty-five points of height
+ * costs a four-layer model - already about as tall as it is wide - a third of
+ * its width. The scan lands the short one back at square-on on its own.
+ */
+function composeTheta(half, phi, tanV, tanH, halfY, midY, current) {
+  let bestTheta = COMPOSE_SQUARE;
+  let best = -1;
+  const steps = 24;
+  for (let i = 0; i <= steps; i++) {
+    const theta = COMPOSE_SQUARE + (i / steps) * (COMPOSE_OBLIQUE - COMPOSE_SQUARE);
+    const { coverage } = fitAt(half, theta, phi, tanV, tanH, halfY, midY);
+    if (coverage > best) {
+      best = coverage;
+      bestTheta = theta;
+    }
+  }
+
+  // A box looks the same from any of four quadrants, so take the equivalent
+  // angle nearest where the camera already is. Otherwise adding one layer can
+  // swing the model half a turn, which reads as the view being taken away.
+  let nearest = bestTheta;
+  let nearestDistance = Infinity;
+  for (let sign = -1; sign <= 1; sign += 2) {
+    for (let k = -2; k <= 2; k++) {
+      const candidate = sign * bestTheta + k * Math.PI;
+      const d = Math.abs(candidate - current);
+      if (d < nearestDistance) {
+        nearestDistance = d;
+        nearest = candidate;
+      }
+    }
+  }
+  return nearest;
+}
+
+/**
+ * Frame the scene so every node fits, and - until the viewer takes hold of the
+ * camera - from the angle that fills the panel best.
+ */
+export function frameBounds(camera, bounds, aspect, insets) {
   const half = [
     Math.max((bounds.max[0] - bounds.min[0]) / 2, 0.2),
     Math.max((bounds.max[1] - bounds.min[1]) / 2, 0.2),
@@ -85,40 +218,34 @@ export function frameBounds(camera, bounds, aspect) {
   const tanV = Math.tan(camera.fovy / 2);
   const tanH = tanV * Math.max(aspect, 0.25);
 
-  // Solve the fit per corner rather than from summed half-extents.
-  //
-  // The summed form needed the box's whole depth added to the distance so the
-  // nearest point could not spill out of frame, and for a long stack seen
-  // nearly side-on that depth term is a quarter of the stack's length - so the
-  // camera was shoved that much too far back and the model sat small in the
-  // middle of an empty panel. A corner is at depth `f` in front of the target,
-  // so it fits when distance >= |offset| / tan + f; taking the maximum over the
-  // eight corners is both exact and tight at any orbit angle.
-  let distance = 0;
-  for (let i = 0; i < 8; i++) {
-    const corner = [
-      (i & 1 ? half[0] : -half[0]),
-      (i & 2 ? half[1] : -half[1]),
-      (i & 4 ? half[2] : -half[2]),
-    ];
-    const along = (axis) => corner[0] * axis[0] + corner[1] * axis[1] + corner[2] * axis[2];
-    const depth = along(forward);
-    distance = Math.max(
-      distance,
-      Math.abs(along(right)) / tanH + depth,
-      Math.abs(along(up)) / tanV + depth
-    );
+  // Overlay chrome, as fractions of the panel's height. Clamped so a very short
+  // panel cannot reserve so much that nothing is left to frame into.
+  const top = clamp(insets && insets.top ? insets.top : 0, 0, 0.3);
+  const bottom = clamp(insets && insets.bottom ? insets.bottom : 0, 0, 0.3);
+  const yMax = 1 - 2 * top;
+  const yMin = -1 + 2 * bottom;
+  const halfY = (yMax - yMin) / 2;
+  const midY = (yMax + yMin) / 2;
+
+  // Once someone has orbited, the angle is theirs and the fit only moves the
+  // distance and the centre.
+  if (!camera.userPosed) {
+    camera.desiredTheta = composeTheta(half, camera.desiredPhi, tanV, tanH, halfY, midY, camera.desiredTheta);
   }
 
-  // The margin is not padding for its own sake: the floating HTML labels sit
-  // above each layer and a frame that fits exactly would clip them.
-  distance = distance * 1.10 + 0.25;
+  const fit = fitAt(half, camera.desiredTheta, camera.desiredPhi, tanV, tanH, halfY, midY);
 
-  camera.minRadius = Math.max(0.6, distance * 0.14);
-  camera.maxRadius = distance * 5;
-  camera.desiredRadius = clamp(distance, camera.minRadius, camera.maxRadius);
+  camera.minRadius = Math.max(0.6, fit.distance * 0.14);
+  camera.maxRadius = fit.distance * 5;
+  camera.desiredRadius = clamp(fit.distance, camera.minRadius, camera.maxRadius);
 
-  vec3.set(camera.desiredTarget, bounds.center[0], bounds.center[1], bounds.center[2]);
+  // fitRight / fitUp still hold the basis for the angle just fitted.
+  vec3.set(
+    camera.desiredTarget,
+    bounds.center[0] + fit.offsetR * fitRight[0] + fit.offsetU * fitUp[0],
+    bounds.center[1] + fit.offsetR * fitRight[1] + fit.offsetU * fitUp[1],
+    bounds.center[2] + fit.offsetR * fitRight[2] + fit.offsetU * fitUp[2]
+  );
   camera.flight = null;
 }
 
@@ -140,6 +267,8 @@ export function settle(camera) {
 }
 
 export function orbit(camera, dTheta, dPhi) {
+  // From here on the framing solve keeps the angle instead of choosing one.
+  camera.userPosed = true;
   camera.desiredTheta += dTheta;
   camera.desiredPhi = clamp(camera.desiredPhi + dPhi, POLE_MARGIN, Math.PI - POLE_MARGIN);
   camera.idleFor = 0;

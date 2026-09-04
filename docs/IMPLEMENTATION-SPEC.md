@@ -164,6 +164,27 @@ Every animation, CSS or JS, is gated on `prefers-reduced-motion`. The existing g
 motion (the render loop, the counter) must check `matchMedia('(prefers-reduced-motion:
 reduce)').matches` and render a single static frame instead.
 
+### 1.5 Layering
+
+| Layer | `z-index` | What |
+|-------|-----------|------|
+| content | auto | `<main>`, including the 3D canvas |
+| header | 30 | the header and anything opening out of it |
+| modals | 50 | `<Modal>`, on a `fixed inset-0` backdrop |
+| toast | 60 | above the modal that raised it |
+
+The header's `z-30` is **required, not decorative.** `.panel` sets `backdrop-filter: blur(12px)`,
+and a filtered element is a stacking context whatever its `position` is. A popover inside a panel
+therefore cannot escape that panel with `z-index` alone: the language menu carried `z-50` and was
+still painted over by the 3D canvas, because the panel it lived in was `position: static` with
+`z-index: auto`, and the canvas is absolutely positioned and later in the document. Only the first
+row of the menu was visible and the rest was unreachable — `elementFromPoint` inside it returned
+the canvas. Raising the header lifts the whole subtree, panel stacking context and all.
+
+The same trap applies to `position: fixed` inside a panel, which would be positioned against the
+panel rather than the viewport. Modals and the toast are rendered as siblings of `<main>`, outside
+every panel, which is what keeps them viewport-anchored.
+
 ---
 
 ## 2. Pure model → geometry layer
@@ -594,23 +615,51 @@ value; the render loop damps the actual value toward it with `damp(..., 9.0, dt)
 - **Idle drift:** after 4 s with no input, `theta` gains `0.055 rad/s`. Any pointer or key
   event cancels it instantly and restarts the timer. Drift is disabled entirely under
   `prefers-reduced-motion`.
-- Default orientation is `theta = -1.42, phi = 1.16` — close to square-on to the flow axis.
-  The obliqueness matters more than it looks: at a three-quarter angle one end of a long
-  stack is much nearer the camera than the other, so a fit that clears the near end leaves
-  the far end at two thirds of the frame and the panel reads as half empty. The remaining
-  tilt is what keeps it three-dimensional.
-- `frame(bounds)` solves the fit against **all eight corners** of the bounding box, projecting
-  each onto the camera basis and taking the largest distance that keeps it inside both FOVs:
+- `frameBounds(camera, bounds, aspect, insets)` solves three things at once. Each was worth
+  roughly as much as the others, and the first two alone still left the panel looking empty.
+
+  **1 - Fit.** Against **all eight corners**, projected onto the camera basis:
 
   ```
   depth    = corner · forward
-  distance = max over corners of  max(|corner · right| / tanH, |corner · up| / tanV) + depth
+  distance = max over corners of  max(|corner · right| / tanH, |corner · up| / tanVFit) + depth
   ```
 
-  then `× 1.10 + 0.25` for margin. An earlier revision summed the half-extents instead, which
-  added a quarter of the stack's *length* to the distance for a side-on model and pushed the
-  camera far enough back to leave a third of the panel empty. Framing that considers only the
-  vertical FOV fails the same way on a wide viewport, which is this app's common case.
+  then `× 1.035 + 0.14` for the floating labels. Summing the half-extents instead adds a
+  quarter of a side-on stack's *length* to the distance; fitting the bounding sphere is worse
+  still. Considering only the vertical FOV fails the same way on a wide viewport.
+
+  **2 - Centre.** Fitting is not the same as filling. Under perspective the near end of a long
+  chain is magnified, so a frame that fits every corner had the model hard against one edge
+  with a quarter of the panel empty at the other - measured at 26% dead on the left against 4%
+  on the right. So the aim point is solved too: fit, project, slide the target by the centring
+  error, repeat. Three passes converge.
+
+  **3 - Compose.** The orbit angle is chosen rather than fixed, because no fixed angle is right
+  for every model. Square-on, a 16-layer chain is about six times wider than it is tall and
+  wastes two thirds of a 3:1 panel; but the rotation that buys it 25 points of height costs a
+  4-layer model a third of its width. `composeTheta` scans 25 angles from square-on to about
+  49°, running the full fit at each, and takes the one covering the most panel - which leaves a
+  compact model near where it started. Candidates are evaluated through the perspective divide
+  rather than on the box's raw proportions, because the projected shape of a long stack is half
+  again as elongated as the box itself.
+
+  Because a box looks the same from four quadrants, the chosen angle is mapped to the
+  equivalent nearest the camera's current one; otherwise adding one layer could swing the model
+  half a turn.
+
+  **Safe area.** `insets` is the share of the panel's height the overlay already occupies - the
+  metric chips plus a label's headroom at the top, the family legend at the bottom. The renderer
+  measures it in pixels against the live canvas height, because the chrome is a fixed size while
+  the panel is not: a fifth of the height on a phone, under a tenth on a desktop. Fitting to the
+  raw canvas tucked the first layer's label behind the chips.
+
+  **Ownership.** The composer runs only while `camera.userPosed` is false. `orbit()` sets it, so
+  from the viewer's first drag the angle is theirs and a re-frame moves only the distance and the
+  centre. `frameAll(true)` - Reset, double-click, `Home` - clears it again.
+
+  Measured on a 16-layer model in a 1398x520 panel: 83% x 35% of the panel before, 88% x 62%
+  after.
 - `focus(node)` animates `target` and `radius` over `--dur-slow` with `easeInOutCubic`.
 
 Input mapping:
@@ -955,7 +1004,7 @@ Extended: `llmClient.test.js` gains the GPT-6 shaping cases. The knowledge-base 
 `modelCatalog.test.js` rather than `ragPipeline.test.js`, because it reads the layer
 table and the validator, not the pipeline.
 
-**Result: 443 tests across thirteen suites, all green.**
+**Result: 455 tests across fourteen suites, all green.**
 
 | Suite | Tests |
 |-------|------:|
@@ -1089,7 +1138,7 @@ still be validated on a preview, because a CDN can add or drop headers this serv
 
 ## 8. Acceptance criteria
 
-- [x] `npm test` - **443 tests, 0 failures** across thirteen suites.
+- [x] `npm test` - **455 tests, 0 failures** across fourteen suites.
 - [x] `npm run build` - succeeds; the renderer is a separate lazy chunk
       (`renderer-*.js`, 17.68 KB gzipped); initial payload +11.17 KB gzipped
       against the previous commit (see 7.3).

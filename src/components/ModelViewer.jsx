@@ -212,7 +212,9 @@ export default function ModelViewer({
     return () => { captureRef.current = null; };
   }, [captureRef]);
 
-  const handleReset = useCallback(() => engineRef.current?.frameAll(), []);
+  // `true` clears the viewer's own orbit angle, because pressing Reset is a
+  // request for the default composition and not only for the default distance.
+  const handleReset = useCallback(() => engineRef.current?.frameAll(true), []);
 
   const handleSnapshot = useCallback(() => {
     const canvas = canvasRef.current;
@@ -251,7 +253,12 @@ export default function ModelViewer({
         {t.vizTitle || 'Live architecture'}
       </h2>
 
-      <div className="relative aspect-[4/3] sm:aspect-[2/1] lg:aspect-[21/9] min-h-[280px] max-h-[560px]">
+      {/* `w-full` is load-bearing. With width left auto, `max-h` clamps the
+          height and the ratio then re-derives a *narrower* width, so the canvas
+          stopped short of the panel and left a dead strip on the right at any
+          viewport past about 1300px. Pinning the width means the ratio only ever
+          drives the height, which max-h is then free to clamp. */}
+      <div className="relative w-full aspect-[4/3] sm:aspect-[2/1] lg:aspect-[21/9] min-h-[280px] max-h-[520px]">
         {/* The canvas is present from the first paint so its size is stable,
             and only becomes visible once the engine has drawn into it. */}
         <canvas

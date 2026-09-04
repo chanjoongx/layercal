@@ -25,7 +25,7 @@
   <img src="https://img.shields.io/badge/Vite-5-646cff?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
   <img src="https://img.shields.io/badge/WebGL2-no_dependencies-990000?style=flat-square&logo=webgl&logoColor=white" alt="WebGL2" />
   <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-38bdf8?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind" />
-  <img src="https://img.shields.io/badge/Vitest-443_tests-6e9f18?style=flat-square&logo=vitest&logoColor=white" alt="Vitest" />
+  <img src="https://img.shields.io/badge/Vitest-455_tests-6e9f18?style=flat-square&logo=vitest&logoColor=white" alt="Vitest" />
   <img src="https://img.shields.io/badge/Gemini-1a73e8?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini" />
   <img src="https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white" alt="OpenAI" />
   <img src="https://img.shields.io/badge/Claude-d4a27f?style=flat-square&logo=anthropic&logoColor=white" alt="Claude" />
@@ -194,14 +194,19 @@ flowchart TB
 
 Things that are load-bearing rather than decorative:
 
-- **Framing fits the bounding box, not the bounding sphere.** A 16-layer stack is a long, thin box.
-  Fitting its sphere into the vertical field of view backs the camera off far enough to render the
-  model as a smudge. The camera projects all eight corners onto its own right/up/forward axes and
-  takes the largest distance that keeps every one inside both fields of view, so the framing is
-  tight at any orbit angle. Summing the half-extents instead is close, and wrong: for a side-on
-  stack it adds a quarter of the model's *length* to the distance and leaves a third of the panel
-  empty. The default orbit sits close to square-on for the same reason — at a three-quarter angle
-  one end of a long stack is much nearer than the other, and clearing the near end wastes the far.
+- **The camera composes the shot rather than holding a pose.** Three things are solved together and
+  each was worth about as much as the others. *Fit* projects all eight corners of the bounding box
+  onto the camera's own axes and takes the largest distance keeping every one in frame - fitting the
+  bounding *sphere* renders the model as a smudge, and summing the half-extents adds a quarter of a
+  side-on stack's length to the distance. *Centre* then slides the aim point until the projection is
+  actually centred: under perspective the near end of a long chain is magnified, so a frame that fit
+  every corner still sat 26% off one edge and 4% off the other. *Compose* chooses the orbit angle,
+  because no fixed angle is right for every model - square-on, a 16-layer chain is six times wider
+  than it is tall and wastes two thirds of a 3:1 panel, while the very rotation that buys it 25
+  points of height costs a 4-layer model a third of its width. The solve scans for the angle that
+  covers the most panel and leaves a compact model near where it started. Together these took a
+  typical model from 83% x 35% of the panel to 88% x 62%. The angle becomes the viewer's the moment
+  they orbit, and Reset hands it back.
 - **The clear colour is solved backwards through the tone map.** The composite pass tone-maps
   everything, so clearing to the panel's background colour would come out visibly lighter than the
   CSS around it. Inverting the ACES fit gives the linear value that tone-maps *to* the colour we
@@ -236,7 +241,7 @@ Things that are load-bearing rather than decorative:
 three.js would cost roughly 150 KB gzipped for a feature that needs perhaps 6% of its surface, and
 would put a third-party render loop between the user's model and the screen.
 
-The renderer here is about 2,500 lines of WebGL2 across four files in `src/viz/` — the engine, the
+The renderer here is about 2,800 lines of WebGL2 across four files in `src/viz/` — the engine, the
 shaders, the GL plumbing and the camera — sitting on roughly 850 lines of framework-free geometry
 and maths that are covered by **140 unit tests** and never touch a GPU. It ships in its own
 lazily-loaded chunk (**17.7 KB gzipped**) that is not fetched if the panel is never shown.
@@ -348,7 +353,7 @@ npm test            # run once
 npm run test:watch  # watch mode
 ```
 
-**443 tests across thirteen suites.**
+**455 tests across fourteen suites.**
 
 | Suite | Tests | What it covers |
 |-------|------:|----------------|
@@ -362,6 +367,8 @@ npm run test:watch  # watch mode
 | `vizTensorShape` | 30 | Shape propagation for every layer type, pooling floors, bidirectional widths, log-compressed sizing, half-typed values |
 | `codeGenerator` | 25 | Spatial to vector transitions, framework routing, inferred input shapes, layer grouping and naming |
 | `render` | 18 | Server-renders every component in all eight locales and checks translation key parity |
+| `vizCamera` | 12 | The framing solve, tested through the matrix it produces: nothing clipped at any panel shape, the model large rather than adrift, a long chain composed more obliquely than a short one, and the orbit angle staying the viewer’s once they take it |
+| `vizCamera` | 12 | The framing solve, tested through the matrix it produces: nothing clipped at any panel shape, the model large rather than adrift, a long chain composed more obliquely than a short one, and the orbit angle staying the viewer’s once they take it |
 | `layerWiring` | 13 | Input wiring for a newly added layer, snapping to legal options, and an exhaustive sweep of all 15 × 15 layer-type pairs for dimension mismatches |
 | `optionParity` | 3 | The legal values for every numeric parameter agree across the builder's `<select>`, the advisor's prompt schema, and the validator's snapping table |
 | `modelValidation` | 12 | Cross-layer dimension checking, including passthrough layers, bidirectional RNN output width, and half-typed values |

@@ -51,9 +51,21 @@ const rgb = (hex) => [
 ];
 
 /**
- * Build one entry. `body` is the solid colour, `light` the emissive tint that
- * bloom picks up — a lighter, more saturated relative of the body so the glow
- * reads as the same material lit from inside rather than as a second colour.
+ * Build one entry. `body` is the surface colour the GPU lights, `light` the
+ * tint the rim and the activation pulse take.
+ *
+ * The values below are deliberately muted. An earlier version used the Tailwind
+ * 500/600 ramp - spring green, lime, sky, fuchsia - which under an emissive
+ * material and bloom rendered as neon candy: saturated, glowing, and closer to
+ * a game than to a technical drawing. These sit around a common lightness with
+ * roughly half the chroma, so the eye reads shape and depth first and colour
+ * second, which is the right order for a diagram.
+ *
+ * There is a hierarchy in the hues, not just nine of them. Layers that change
+ * the tensor - embedding, convolution, dense, recurrent, attention, pooling -
+ * carry the colour. Layers that annotate one without reshaping it -
+ * normalisation, dropout, activations - are close to neutral, so a stack reads
+ * as a few coloured tensors with markers on them rather than a rainbow.
  */
 const paint = (family, body, light, hex, hexDark) => ({
   family,
@@ -65,24 +77,27 @@ const paint = (family, body, light, hex, hexDark) => ({
 
 /** @type {Record<string, LayerPaint>} */
 export const LAYER_PALETTE = {
-  embedding: paint('input', '#7c3aed', '#c4b5fd', '#8b5cf6', '#a78bfa'),
-  linear: paint('dense', '#2563eb', '#93c5fd', '#3b82f6', '#60a5fa'),
-  conv2d: paint('conv', '#059669', '#6ee7b7', '#10b981', '#34d399'),
-  lstm: paint('recurrent', '#d97706', '#fcd34d', '#f59e0b', '#fbbf24'),
-  gru: paint('recurrent', '#ea580c', '#fdba74', '#f97316', '#fb923c'),
-  transformer: paint('attention', '#c026d3', '#f0abfc', '#d946ef', '#e879f9'),
-  attention: paint('attention', '#a21caf', '#e9a8fb', '#c026d3', '#d946ef'),
-  batchnorm: paint('norm', '#0891b2', '#67e8f9', '#06b6d4', '#22d3ee'),
-  layernorm: paint('norm', '#0e7490', '#5eead4', '#0d9488', '#2dd4bf'),
-  maxpool2d: paint('pool', '#0284c7', '#7dd3fc', '#0ea5e9', '#38bdf8'),
-  avgpool2d: paint('pool', '#0369a1', '#93c5fd', '#0284c7', '#38bdf8'),
-  dropout: paint('reg', '#475569', '#cbd5e1', '#64748b', '#94a3b8'),
-  relu: paint('act', '#65a30d', '#bef264', '#84cc16', '#a3e635'),
-  softmax: paint('act', '#ca8a04', '#fde047', '#eab308', '#facc15'),
+  // Structural: these carry the colour.
+  embedding: paint('input', '#6b5cc4', '#a79ae8', '#7b6cd9', '#9385e9'),
+  linear: paint('dense', '#3468ac', '#86aedf', '#3e7bc8', '#5f9be0'),
+  conv2d: paint('conv', '#2a8578', '#7cc9bc', '#2f9e8f', '#45b8a6'),
+  lstm: paint('recurrent', '#a9743a', '#e0b278', '#c1873f', '#d89f58'),
+  gru: paint('recurrent', '#9c6544', '#d9a886', '#b37850', '#cb9270'),
+  transformer: paint('attention', '#85508f', '#c99bd3', '#9d5fa8', '#b87cc3'),
+  attention: paint('attention', '#73456f', '#be8fb4', '#8a5484', '#a96ea1'),
+  maxpool2d: paint('pool', '#33738c', '#85bdd1', '#3c8aa8', '#58a8c4'),
+  avgpool2d: paint('pool', '#2c6076', '#7baabe', '#356f88', '#4e90a8'),
+
+  // Annotations: near-neutral, so they read as markers on the flow.
+  batchnorm: paint('norm', '#5d6878', '#a3aebd', '#6e7a8a', '#8d9bad'),
+  layernorm: paint('norm', '#52606c', '#98a6b2', '#63717e', '#8291a0'),
+  dropout: paint('reg', '#676770', '#a9a9b2', '#77777f', '#94949e'),
+  relu: paint('act', '#6c7f49', '#b2c58a', '#7e9455', '#9ab16b'),
+  softmax: paint('act', '#8a7a3e', '#cbbe86', '#9c8b4b', '#b6a566'),
 };
 
 /** Neutral paint for a type the palette has never heard of. */
-export const FALLBACK_PAINT = paint('reg', '#475569', '#cbd5e1', '#64748b', '#94a3b8');
+export const FALLBACK_PAINT = paint('reg', '#676770', '#a9a9b2', '#77777f', '#94949e');
 
 /**
  * @param {string} type

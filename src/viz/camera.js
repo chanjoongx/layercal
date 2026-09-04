@@ -22,15 +22,19 @@ export function createCamera() {
     near: 0.05,
     far: 200,
 
-    // Three-quarter view from above the flow axis: the stack reads as a
-    // sequence rather than as a single silhouette.
-    theta: -1.02,
-    phi: 1.12,
+    // Nearly perpendicular to the flow axis. The obliqueness matters more than
+    // it looks: at a three-quarter angle one end of a long stack is much nearer
+    // than the other, so fitting the near end leaves the far end at two thirds
+    // of the frame and the panel looks half empty. Square-on, both ends sit at
+    // almost the same depth and the model fills the width. The remaining tilt
+    // is what keeps it reading as three-dimensional.
+    theta: -1.42,
+    phi: 1.16,
     radius: 8,
     target: vec3.set(vec3.create(), 0, 0.9, 0),
 
-    desiredTheta: -1.02,
-    desiredPhi: 1.12,
+    desiredTheta: -1.42,
+    desiredPhi: 1.16,
     desiredRadius: 8,
     desiredTarget: vec3.set(vec3.create(), 0, 0.9, 0),
 
@@ -78,21 +82,37 @@ export function frameBounds(camera, bounds, aspect) {
     Math.max((bounds.max[2] - bounds.min[2]) / 2, 0.2),
   ];
 
-  // |h . axis| summed over the three axes is the half-extent of an AABB along
-  // an arbitrary direction.
-  const extentAlong = (axis) =>
-    Math.abs(half[0] * axis[0]) + Math.abs(half[1] * axis[1]) + Math.abs(half[2] * axis[2]);
-
-  const halfWidth = extentAlong(right);
-  const halfHeight = extentAlong(up);
-  const halfDepth = extentAlong(forward);
-
   const tanV = Math.tan(camera.fovy / 2);
   const tanH = tanV * Math.max(aspect, 0.25);
 
-  // The extra margin is not padding for its own sake: the floating HTML labels
-  // sit above each slab and would be clipped by a frame that fits exactly.
-  const distance = Math.max(halfHeight / tanV, halfWidth / tanH) * 1.22 + halfDepth + 0.4;
+  // Solve the fit per corner rather than from summed half-extents.
+  //
+  // The summed form needed the box's whole depth added to the distance so the
+  // nearest point could not spill out of frame, and for a long stack seen
+  // nearly side-on that depth term is a quarter of the stack's length - so the
+  // camera was shoved that much too far back and the model sat small in the
+  // middle of an empty panel. A corner is at depth `f` in front of the target,
+  // so it fits when distance >= |offset| / tan + f; taking the maximum over the
+  // eight corners is both exact and tight at any orbit angle.
+  let distance = 0;
+  for (let i = 0; i < 8; i++) {
+    const corner = [
+      (i & 1 ? half[0] : -half[0]),
+      (i & 2 ? half[1] : -half[1]),
+      (i & 4 ? half[2] : -half[2]),
+    ];
+    const along = (axis) => corner[0] * axis[0] + corner[1] * axis[1] + corner[2] * axis[2];
+    const depth = along(forward);
+    distance = Math.max(
+      distance,
+      Math.abs(along(right)) / tanH + depth,
+      Math.abs(along(up)) / tanV + depth
+    );
+  }
+
+  // The margin is not padding for its own sake: the floating HTML labels sit
+  // above each layer and a frame that fits exactly would clip them.
+  distance = distance * 1.10 + 0.25;
 
   camera.minRadius = Math.max(0.6, distance * 0.14);
   camera.maxRadius = distance * 5;

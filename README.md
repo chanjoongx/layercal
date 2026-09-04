@@ -25,7 +25,7 @@
   <img src="https://img.shields.io/badge/Vite-5-646cff?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
   <img src="https://img.shields.io/badge/WebGL2-no_dependencies-990000?style=flat-square&logo=webgl&logoColor=white" alt="WebGL2" />
   <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-38bdf8?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind" />
-  <img src="https://img.shields.io/badge/Vitest-427_tests-6e9f18?style=flat-square&logo=vitest&logoColor=white" alt="Vitest" />
+  <img src="https://img.shields.io/badge/Vitest-443_tests-6e9f18?style=flat-square&logo=vitest&logoColor=white" alt="Vitest" />
   <img src="https://img.shields.io/badge/Gemini-1a73e8?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini" />
   <img src="https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white" alt="OpenAI" />
   <img src="https://img.shields.io/badge/Claude-d4a27f?style=flat-square&logo=anthropic&logoColor=white" alt="Claude" />
@@ -56,9 +56,10 @@ Everything happens in the browser. There is no backend, no account, and nothing 
 | **Live computation** | Parameter counts, forward-pass FLOPs, and memory across FP32, FP16, BF16 and INT8 for both inference and Adam training |
 | **Code generation** | PyTorch `nn.Module`, TensorFlow Sequential and Functional API, JAX/Flax `nn.compact` |
 | **AI architecture advisor** | Describe what you need in plain English and get a validated layer stack back |
+| **Layers wire themselves up** | A layer you add takes its input width from what the stack already emits, so clicking through the palette builds a model that runs. Output widths are left to you |
 | **Dimension checking** | Layers whose input does not match the previous layer's output are flagged on the canvas *and* in 3D |
 | **Persistent canvas** | Your model is saved locally and restored on the next visit |
-| **Eight languages** | EN, KO, JA, ZH, ES, FR, DE, PT |
+| **Eight languages** | EN, KO, JA, ZH, ES, FR, DE, PT — English by default, your choice remembered |
 | **Dark mode** | Follows the system setting, with a manual override. The 3D view re-lights itself to match |
 
 <p align="center">
@@ -75,11 +76,12 @@ knew. This one encodes the numbers:
 | Visual property | What it means |
 |-----------------|---------------|
 | **Volume size** | The shape of the tensor the layer emits. A Conv2D is `channels × H × W`; a Linear is a thin plate as wide as its output. Sizes are log-compressed, because a 50,000-word embedding beside a 64-unit dense layer is a 780× ratio and one of them would be invisible |
+| **Stack depth** | Channel count. A layer is drawn as a stack of separated feature-map planes, not a box — a 512-channel convolution is visibly deeper than a 32-channel one. A dense layer emits a vector, so it stays a single plate |
+| **Face grid** | The spatial resolution of the feature map, on the plate faces. Absent on layers that have no spatial extent |
 | **Resting brightness** | The layer's share of total parameters. The layers that dominate your model's size are the ones that glow |
 | **Travelling pulse** | A forward pass. A Gaussian wave of activation sweeps input to output once every ~3.6 seconds, lighting each volume as it arrives |
 | **Flow density and speed** | The layer's share of total FLOPs. Compute-heavy links carry more, faster particles |
 | **Ribbon width** | The feature dimension entering and leaving. A 64→512 expansion visibly flares |
-| **Internal lattice** | Channel count. A 512-channel layer has visibly finer internal structure than a 16-channel one |
 | **Amber stripes, dashed link** | A dimension mismatch: this layer's declared input does not match what the previous layer emits, so the exported code would not run |
 | **Thin plates riding above the flow** | Activations, dropout and normalisation — they annotate the tensor rather than reshaping it |
 
@@ -178,7 +180,7 @@ flowchart TB
 
     subgraph b["Model &mdash; one instanced draw call each"]
         direction LR
-        SL["4 &middot; Slabs<br/><i>opaque, GGX, parallax lattice</i>"] --> HL["5 &middot; Halo shell<br/><i>back faces only</i>"] --> RB["6 &middot; Ribbons<br/><i>travelling energy bands</i>"] --> PT["7 &middot; Particles<br/><i>Bezier in the vertex shader</i>"]
+        SL["4 &middot; Plates<br/><i>opaque, GGX, per channel count</i>"] --> HL["5 &middot; Halo shell<br/><i>back faces only</i>"] --> RB["6 &middot; Ribbons<br/><i>travelling energy bands</i>"] --> PT["7 &middot; Particles<br/><i>Bezier in the vertex shader</i>"]
     end
 
     subgraph c["Post &mdash; HDR to canvas"]
@@ -194,14 +196,22 @@ Things that are load-bearing rather than decorative:
 
 - **Framing fits the bounding box, not the bounding sphere.** A 16-layer stack is a long, thin box.
   Fitting its sphere into the vertical field of view backs the camera off far enough to render the
-  model as a smudge. The camera projects the box's half-extents onto its own right/up/forward axes
-  and fits those, so the framing is tight at any orbit angle.
+  model as a smudge. The camera projects all eight corners onto its own right/up/forward axes and
+  takes the largest distance that keeps every one inside both fields of view, so the framing is
+  tight at any orbit angle. Summing the half-extents instead is close, and wrong: for a side-on
+  stack it adds a quarter of the model's *length* to the distance and leaves a third of the panel
+  empty. The default orbit sits close to square-on for the same reason — at a three-quarter angle
+  one end of a long stack is much nearer than the other, and clearing the near end wastes the far.
 - **The clear colour is solved backwards through the tone map.** The composite pass tone-maps
   everything, so clearing to the panel's background colour would come out visibly lighter than the
   CSS around it. Inverting the ACES fit gives the linear value that tone-maps *to* the colour we
   want.
 - **Saturation is restored after tone mapping.** ACES desaturates as it rolls off, which is right
   for photography and wrong for a diagram whose colours carry meaning.
+- **Distance fog is a quarter as strong in the light theme.** Fog mixes toward the background in
+  scene space, and inverting the tone map sends a near-white background to about 1.2 there — so on
+  a light ground a tenth of fog adds more absolute light than a teal carries in its darkest
+  channel, and every layer lands as pastel. Same cue, same code, a quarter of the strength.
 - **Camera smoothing is frame-rate independent.** `target + (current - target) * exp(-λ dt)`, not a
   fixed per-frame lerp — otherwise the same camera feels heavy at 60 Hz and twitchy at 144 Hz.
 - **Blending switches with the theme.** Additive light on a near-white ground clips to white and
@@ -338,7 +348,7 @@ npm test            # run once
 npm run test:watch  # watch mode
 ```
 
-**427 tests across eleven suites.**
+**443 tests across thirteen suites.**
 
 | Suite | Tests | What it covers |
 |-------|------:|----------------|
@@ -352,6 +362,8 @@ npm run test:watch  # watch mode
 | `vizTensorShape` | 30 | Shape propagation for every layer type, pooling floors, bidirectional widths, log-compressed sizing, half-typed values |
 | `codeGenerator` | 25 | Spatial to vector transitions, framework routing, inferred input shapes, layer grouping and naming |
 | `render` | 18 | Server-renders every component in all eight locales and checks translation key parity |
+| `layerWiring` | 13 | Input wiring for a newly added layer, snapping to legal options, and an exhaustive sweep of all 15 × 15 layer-type pairs for dimension mismatches |
+| `optionParity` | 3 | The legal values for every numeric parameter agree across the builder's `<select>`, the advisor's prompt schema, and the validator's snapping table |
 | `modelValidation` | 12 | Cross-layer dimension checking, including passthrough layers, bidirectional RNN output width, and half-typed values |
 
 The render suite uses `react-dom/server` rather than jsdom, so it needs no extra dependencies. It

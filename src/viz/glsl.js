@@ -19,8 +19,6 @@
 const COMMON = /* glsl */ `
 const float PI = 3.14159265359;
 
-float maxc(vec3 v) { return max(v.x, max(v.y, v.z)); }
-
 float hash12(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
   p3 += dot(p3, p3.yzx + 33.33);
@@ -47,7 +45,7 @@ layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aUV;
 layout(location = 3) in vec4 iCenter;   // xyz = world centre, w = normalised depth
-layout(location = 4) in vec4 iExtent;   // xyz = size, w = lattice frequency
+layout(location = 4) in vec4 iExtent;   // xyz = size, w = feature-map grid cells
 layout(location = 5) in vec4 iBase;     // rgb = albedo (linear), a = parameter share
 layout(location = 6) in vec4 iGlow;     // rgb = emissive (linear), a = warning flag
 layout(location = 7) in vec4 iState;    // x = selected, y = hovered, z = annotation, w = flop share
@@ -62,13 +60,12 @@ uniform float uShellScale;  // 1.0 for the solid pass, >1 for the halo shell
 
 out vec3 vNormal;
 out vec3 vWorld;
-out vec3 vObj;
-out vec3 vScale;
+out vec2 vUV;
 out vec4 vBase;
 out vec4 vGlow;
 out vec4 vState;
 out float vActivation;
-out float vLattice;
+out float vCells;
 
 void main() {
   float t = uTime * uMotion;
@@ -90,12 +87,11 @@ void main() {
 
   vNormal = aNormal;
   vWorld = world;
-  vObj = aPosition;
-  vScale = scale;
+  vUV = aUV;
   vBase = iBase;
   vGlow = iGlow;
   vState = iState;
-  vLattice = iExtent.w;
+  vCells = iExtent.w;
 
   gl_Position = uViewProj * vec4(world, 1.0);
 }
@@ -108,19 +104,21 @@ ${COMMON}
 
 in vec3 vNormal;
 in vec3 vWorld;
-in vec3 vObj;
-in vec3 vScale;
+in vec2 vUV;
 in vec4 vBase;
 in vec4 vGlow;
 in vec4 vState;
 in float vActivation;
-in float vLattice;
+in float vCells;
 
 uniform vec3 uCameraPos;
 uniform vec3 uSkyColor;
 uniform vec3 uGroundColor;
 uniform vec3 uKeyColor;
 uniform vec3 uWarnColor;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogDensity;
 uniform float uTime;
 uniform float uMotion;
 
@@ -157,23 +155,21 @@ void main() {
   // a box read as a solid rather than a silhouette.
   vec3 ambient = mix(uGroundColor, uSkyColor, N.y * 0.5 + 0.5);
 
-  // Interior lattice: a parallax-offset 3D grid in object space, at two
-  // octaves. This is what turns a solid box into a volume of feature maps; the
-  // frequency comes from the tensor's channel count, so a 512-channel layer
-  // visibly has finer internal structure than a 16-channel one.
-  //
-  // It modulates the albedo rather than only adding light, because an additive
-  // pattern vanishes against a bright background and this has to read in both
-  // themes.
-  vec3 viewObj = normalize(V / max(vScale, vec3(1e-3)));
-  vec3 p = vObj + viewObj * 0.14;
-  float coarse = smoothstep(0.46, 0.50, maxc(abs(fract(p * vLattice) - 0.5)));
-  float fine = smoothstep(0.44, 0.50, maxc(abs(fract(p * vLattice * 3.0) - 0.5)));
-  float lattice = clamp(coarse + fine * 0.45, 0.0, 1.0);
+  // A derivative-anti-aliased grid on the face of the plate, showing the
+  // spatial resolution of the feature map. The layer is already drawn as a
+  // stack of plates, so the structure is real; this only says how finely each
+  // plate is sampled. vCells is zero for layers that have no spatial extent.
+  float grid = 0.0;
+  if (vCells > 0.5) {
+    vec2 cell = vUV * vCells;
+    vec2 d = abs(fract(cell - 0.5) - 0.5) / max(fwidth(cell), vec2(1e-5));
+    // Only the faces of the plate, not its edges.
+    grid = (1.0 - min(min(d.x, d.y), 1.0)) * step(0.5, abs(N.z));
+  }
 
   // Wrapped diffuse: the shadow side keeps its hue instead of going to black.
   float wrap = clamp((dot(N, KEY_DIR) + 0.25) / 1.25, 0.0, 1.0);
-  vec3 albedo = vBase.rgb * (0.80 + 0.40 * lattice);
+  vec3 albedo = vBase.rgb * (1.0 - 0.16 * grid);
   // Keeping the key below 1.0 matters: a diffuse term that clips drags every
   // saturated hue toward white once the tone map runs.
   vec3 diffuse = albedo * (ambient * 0.40 + uKeyColor * wrap * 0.88);
@@ -183,34 +179,40 @@ void main() {
   float a = ROUGHNESS * ROUGHNESS;
   vec3 F0 = mix(vec3(0.04), albedo, 0.20);
   vec3 F = F0 + (1.0 - F0) * pow(1.0 - VoH, 5.0);
-  vec3 specular = uKeyColor * distributionGGX(NoH, a) * visibilitySmith(NoV, NoL, a) * NoL * F * 1.7;
+  vec3 specular = uKeyColor * distributionGGX(NoH, a) * visibilitySmith(NoV, NoL, a) * NoL * F * 1.15;
 
   // Fresnel rim in the emissive colour, brightened as the pulse arrives.
   float fresnel = pow(1.0 - NoV, 4.0);
-  vec3 rim = vGlow.rgb * fresnel * (0.42 + 0.85 * vActivation);
+  vec3 rim = vGlow.rgb * fresnel * (0.30 + 0.55 * vActivation);
 
-  vec3 interior = mix(albedo, vGlow.rgb, 0.65) * lattice * 0.22 * (0.25 + 0.9 * vActivation);
+  vec3 color = diffuse + specular + rim;
 
-  vec3 color = diffuse + specular + rim + interior;
-
-  // Emissive. Parameter share is a constant glow and the pulse is transient,
-  // so at rest the brightest slabs are the ones that dominate the model size.
-  // That is the actual information payload of this view.
-  // Mixing the emissive back toward the albedo keeps a saturated layer
-  // saturated: pure pale-glow emissive washes every colour toward white.
-  vec3 emissive = mix(albedo, vGlow.rgb, 0.6);
-  color += emissive * (0.05 + 1.35 * vActivation + 0.5 * vBase.a);
+  // Emissive. Parameter share is a constant lift and the pulse is transient, so
+  // at rest the brightest layers are the ones that dominate the model's size -
+  // that is the information this view carries. The coefficients are a fraction
+  // of what they were: at the old strength every layer glowed like a sign.
+  vec3 emissive = mix(albedo, vGlow.rgb, 0.55);
+  color += emissive * (0.02 + 0.55 * vActivation + 0.22 * vBase.a);
 
   // Selection and hover.
-  color += vGlow.rgb * (vState.x * 0.55 + vState.y * 0.28);
+  color += vGlow.rgb * (vState.x * 0.34 + vState.y * 0.16);
 
-  // Dimension mismatch: animated diagonal stripes. Colour is never the only
-  // cue here, and it is not the only cue in the interface either.
+  // Dimension mismatch. Concentrated on the silhouette rather than painted over
+  // the whole layer: the stripes used to obliterate the colour that says what
+  // kind of layer it is. Still a pattern and not only a hue, and the link into
+  // the layer is dashed, and the card spells it out.
   if (vGlow.a > 0.5) {
-    float s = fract((vWorld.x + vWorld.y + vWorld.z) * 2.4 - uTime * uMotion * 0.7);
-    float stripe = smoothstep(0.42, 0.50, abs(s - 0.5) * 2.0);
-    color = mix(color, uWarnColor * (0.7 + 0.8 * vActivation), stripe * 0.42);
+    float edge = pow(1.0 - NoV, 2.5);
+    float s = fract((vWorld.x + vWorld.y + vWorld.z) * 3.0 - uTime * uMotion * 0.5);
+    float stripe = smoothstep(0.34, 0.5, abs(s - 0.5) * 2.0);
+    color = mix(color, uWarnColor, clamp((0.14 + 0.5 * edge) * (0.4 + 0.6 * stripe), 0.0, 0.75));
   }
+
+  // Distance fog. Without it every layer sits at the same apparent depth and a
+  // long stack reads as flat; this is most of what makes the far end recede.
+  float distance = length(uCameraPos - vWorld);
+  float fog = 1.0 - exp(-max(distance - uFogNear, 0.0) * uFogDensity);
+  color = mix(color, uFogColor, clamp(fog, 0.0, 0.9));
 
   fragColor = vec4(color, 1.0);
 }
@@ -241,7 +243,7 @@ void main() {
   vec3 V = normalize(uCameraPos - vWorld);
   // Back faces, so the silhouette is where the normal turns away from the eye.
   float f = pow(1.0 - abs(dot(N, V)), 2.5);
-  float amount = f * (0.10 + 0.55 * vActivation + 0.25 * vBase.a + 0.35 * vState.x) * uShellOpacity;
+  float amount = f * (0.05 + 0.30 * vActivation + 0.14 * vBase.a + 0.24 * vState.x) * uShellOpacity;
   fragColor = vec4(vGlow.rgb * amount, amount);
 }
 `;
@@ -290,14 +292,17 @@ void main() {
   float edge = 1.0 - abs(vSide);
   float profile = pow(max(edge, 0.0), 1.6);
 
-  // A constant tube keeps the connection readable between pulses.
-  float base = 0.20 * profile;
+  // A constant tube keeps the connection readable between pulses. Kept low:
+  // the ribbon is a cross of two strips, so the centre gets both, and on top of
+  // the particles the sum used to clip to white and lose the colour that says
+  // where the data is coming from.
+  float base = 0.11 * profile;
 
   float band = fract(vT * uBandDensity - uTime * uMotion * uBandSpeed);
   float pulse = smoothstep(0.5, 0.0, abs(band - 0.5) * 2.0);
 
   vec3 color = vColor;
-  float alpha = (base + 1.35 * pulse * profile) * uOpacity;
+  float alpha = (base + 0.60 * pulse * profile) * uOpacity;
 
   if (vBroken > 0.5) {
     // A dashed, danger-coloured link: a dimension mismatch has to be visible
@@ -377,7 +382,7 @@ out vec4 fragColor;
 void main() {
   float d = length(vUV);
   if (d > 1.0) discard;
-  float a = pow(smoothstep(1.0, 0.0, d), 2.2) * vFade * uOpacity;
+  float a = pow(smoothstep(1.0, 0.0, d), 3.0) * vFade * uOpacity;
   fragColor = vec4(vColor * a, a);
 }
 `;

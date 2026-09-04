@@ -14,6 +14,7 @@ import { validateModelDimensions } from '@/utils/modelValidation';
 import { generatePyTorchCode, generateTensorFlowCode, generateJAXCode } from '@/utils/codeGenerator';
 import { useAnimatedNumber } from '@/utils/useAnimatedNumber';
 import { paletteStyle, paintFor } from '@/viz/palette';
+import { wireAppendedLayer } from '@/utils/layerWiring';
 import AIAdvisor from '@/components/AIAdvisor';
 import ModelViewer from '@/components/ModelViewer';
 
@@ -195,14 +196,19 @@ export default function LayerCal() {
     });
   }, []);
 
+  /**
+   * Appending wires the new layer's input to whatever the stack currently
+   * emits. Pasting fixed defaults meant the second layer anyone added was
+   * already mismatched, so building a model by clicking produced warnings and
+   * code that would not run.
+   */
   const addLayer = useCallback((type) => {
-    const layerConfig = LAYER_TYPES[type];
-    if (!layerConfig) return;
+    if (!LAYER_TYPES[type]) return;
     const id = nextLayerId();
     setModelLayers(prev => [...prev, {
       id,
       type,
-      params: { ...layerConfig.defaultParams },
+      params: wireAppendedLayer(type, prev, LAYER_TYPES),
     }]);
     setSelectedLayerId(id);
   }, [LAYER_TYPES]);

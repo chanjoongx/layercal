@@ -102,6 +102,16 @@ Contract:
 export const LAYER_PALETTE
 ```
 
+`base` and `glow` feed the GPU for **both** themes; `hex`/`hexDark` are the 2D UI only.
+
+The values are deliberately muted and sit around a common lightness. An earlier revision used
+the Tailwind 500/600 ramp — spring green, lime, sky, fuchsia — which under an emissive material
+and bloom rendered as neon candy: saturated, glowing, closer to a game than to a technical
+drawing. Hue carries the *family*, so the families have to be told apart at a glance, but the
+hierarchy matters too: structural layers (conv, dense, attention, recurrent, pool) are coloured,
+and annotations that only decorate the tensor (norm, dropout, activations) are held close to
+neutral so they recede.
+
 Every id in `LAYER_TYPE_IDS` must have an entry, asserted by `vizPalette.test.js`.
 
 `layerTypes.js` must carry **no** colour of its own. It previously exported a `color` field of
@@ -295,6 +305,49 @@ lerp factor instead would make the camera feel different at 60 Hz and 144 Hz; th
 single most common bug in hand-written orbit controls and the spec calls it out for that
 reason.
 
+### 2.4 `src/utils/layerWiring.js`
+
+Adding a layer used to paste fixed defaults, which meant the *second* layer anyone added was
+already mismatched — Conv2D emits 64 channels and BatchNorm defaulted to 128. Building a model
+by clicking through the palette produced a canvas covered in warning stripes and exported code
+that could not run. A first click is not a reasonable place to hand someone a broken model.
+
+`wireAppendedLayer(type, layers, layerTypes)` returns the params for a layer about to be
+appended: defaults, with its **input** parameter set to the width currently leaving the stack.
+
+```js
+const INPUT_FIELD = {
+  conv2d: 'in_channels',   linear: 'input_dim',
+  lstm:   'input_size',    gru:    'input_size',
+  transformer: 'd_model',  attention: 'd_model',   // both input and output
+  batchnorm: 'num_features', layernorm: 'normalized_shape',
+};
+```
+
+Three rules make it safe:
+
+- **`outgoingWidth` walks the propagated shapes backwards**, so a trailing run of layers that
+  carry no width of their own — ReLU, Dropout — cannot erase the answer.
+- **Only the input is wired.** How wide a layer should be on the way *out* is a design decision
+  that belongs to the person building the model, so `out_channels` keeps its default.
+- **The result is snapped to a legal option**, preferring an exact match. The value has to be
+  one the `<select>` can actually show.
+
+That last rule forced the option lists in `layerTypes.js` (and their mirrors in
+`ragPipeline.js`) wider, because several perfectly ordinary stacks were not *representable*:
+`in_channels` had no 512, `normalized_shape` started at 128, `d_model` started at 256. A
+validator complaining about a value the UI cannot offer is a bug in the UI.
+
+Verified exhaustively rather than by example: `layerWiring.test.js` appends every layer type
+to every other one — all 15 × 15 pairs — and asserts `validateModelDimensions` reports nothing.
+
+Those option lists live in three places — the field definitions, the schema text in the LLM
+prompt, and `VALID_OPTIONS` in the validator — and nothing linked them, so widening one and
+forgetting another produced a value the UI offers, the advisor is never told about, and the
+validator silently rewrites. `optionParity.test.js` now reads the schema back out of
+`buildPrompt` and probes the snapping table through `parseAndValidateLayers`, so the three
+cannot drift apart again.
+
 ---
 
 ## 3. WebGL2 renderer
@@ -339,30 +392,65 @@ lost, so teardown cannot cancel the restoration it is waiting on.
 | `unitBox` | indexed VAO | 24 verts / 36 indices, per-vertex position + normal + face-local UV |
 | `quad` | indexed VAO | fullscreen triangle pair, positions only |
 | `ribbonVAO` | dynamic VAO | rebuilt on scene change, `DYNAMIC_DRAW` |
-| `instanceBuffer` | `ARRAY_BUFFER` | per-node: `mat3 basis` packed as 3 vec4 (scale+translate), `vec4 baseColor`, `vec4 glowColor`, `vec4 meta = (paramShare, flopShare, warning, zPhase)` |
+| `sliceInstanceBuffer` | `ARRAY_BUFFER` | one instance **per plate** — see §3.2.1. Same 20-float layout, with `iExtent.w` carrying the face-grid cell count |
+| `nodeInstanceBuffer` | `ARRAY_BUFFER` | one instance **per layer**, for the contact shadow and the halo shell, which need the whole silhouette rather than a plate |
 | `sceneFBO` | FBO | `RGBA16F` colour + `DEPTH_COMPONENT24`, MSAA renderbuffers when `samples > 0`, resolved via `blitFramebuffer` |
 | `bloomA/B` | FBO chain | 3 mip levels at ½, ¼, ⅛ resolution, `RGBA16F` or `RGBA8` |
 
-Instance stride is 80 bytes (20 floats). Attribute locations are fixed in the shader with
-`layout(location = N)` so no `getAttribLocation` round-trip is needed and a link-order change
-cannot silently rebind them.
+Instance stride is 80 bytes (20 floats): `vec4 (center.xyz, phase)`, `vec4 (extent.xyz, cells)`,
+`vec4 (baseColor.rgb, paramShare)`, `vec4 (glowColor.rgb, warning)`, `vec4 state`. Attribute
+locations are fixed in the shader with `layout(location = N)` so no `getAttribLocation`
+round-trip is needed and a link-order change cannot silently rebind them.
+
+#### 3.2.1 Slicing — a layer is a stack of plates, not a box
+
+A layer is not drawn as one box. `sliceCount(node)` splits it along the flow axis into plates:
+
+```js
+annotation           → 1
+shape.kind === 'vector' → 1                       // a dense layer emits a vector
+otherwise            → round(clamp(log2(channels) - 1, 2, cap))
+                       cap = 7 for 'sequence', 9 for 'spatial'
+```
+
+so a 512-channel convolution is visibly a deeper stack than a 32-channel one. The log keeps a
+780× channel ratio legible; the cap is there because past about nine plates they stop being
+countable and start being noise. Plates are laid out with `gapRatio = 0.55`, giving
+`thickness = extent.d / (n + (n - 1) * gapRatio)`, so a layer's total depth is unchanged and
+the size still reads as the tensor size.
+
+The two exclusions are the point of the function. A dense layer sliced into a comb claims a
+structure it does not have, and an annotation (§2.1) is a marker rather than a tensor. Both
+were regressions caught in render verification, not hypotheticals.
+
+`sliceOwner[]` maps plate index → node index, so picking, selection and hover still address
+whole layers. This is also why the shadow and shell passes read a separate per-node buffer:
+sized to a plate they would strobe with the gaps, and the halo in particular bled *through*
+the gaps and filmed each layer over in a pale tint — visible on a dark ground, disqualifying
+on a light one, and the reason `theme.shell` is `0` in the light theme.
 
 ### 3.3 Passes, in order
 
 ```
-1  grid          → sceneFBO   analytic grid on a large ground quad, depth write on
-2  slabs         → sceneFBO   instanced opaque tensor volumes, depth write on
-3  shell         → sceneFBO   instanced back-face-only additive halo, depth test on / write off
-4  ribbons       → sceneFBO   additive tapered strips, depth test on / write off
-5  particles     → sceneFBO   instanced additive billboards, depth test on / write off
-6  resolve       → sceneTex   blitFramebuffer when MSAA, otherwise a no-op
-7  brightPass    → bloom[0]   threshold + ½ downsample
-8  blur x3       → bloom[n]   separable 9-tap Gaussian, H then V, at each mip
-9  composite     → default    tonemap(scene + bloom) + vignette + grain + optional FXAA
+1  sky           → sceneFBO   inverse-tonemapped gradient on a fullscreen triangle
+2  grid          → sceneFBO   analytic grid on a large ground quad, depth write on
+3  shadows       → sceneFBO   per-node ground quads, multiply blend           [per node]
+4  slabs         → sceneFBO   instanced opaque plates, depth write on         [per slice]
+5  shell         → sceneFBO   back-face-only halo, depth test on / write off  [per node]
+6  ribbons       → sceneFBO   tapered strips, depth test on / write off
+7  particles     → sceneFBO   instanced billboards, depth test on / write off
+8  resolve       → sceneTex   blitFramebuffer when MSAA, otherwise a no-op
+9a brightPass    → bloom[0]   threshold + ½ downsample
+9b blur x3       → bloom[n]   separable 9-tap Gaussian, H then V, at each mip
+9c composite     → default    tonemap(scene + bloom) + vignette + grain + optional FXAA
 ```
 
-Nine passes, ~12 draw calls, independent of layer count. Everything that varies per layer
-is instanced.
+Passes 5–7 blend additively in the dark theme and composite over in the light one: additive
+light on a near-white ground clips to white and loses the hue that carries the meaning. Pass 5
+is skipped entirely when `theme.shell` is `0`, which is the case in the light theme.
+
+Nine passes, ~13 draw calls, independent of layer count. Everything that varies per layer is
+instanced.
 
 ### 3.4 Shaders
 
@@ -395,19 +483,36 @@ Fragment stage, in this order:
    Full PBR is not needed; one correct GGX lobe is what makes the edges read as material
    rather than as flat fill.
 4. **Fresnel rim** — `pow(1.0 - max(dot(N, V), 0.0), 4.0)`, tinted with `glowColor`, scaled
-   by `0.55 + 0.9 * vActivation`.
-5. **Interior lattice** — a parallax-offset 3D grid sampled in object space:
-   `p = vObjPos + V_obj * 0.14; lattice = smoothstep(0.46, 0.5, max3(abs(fract(p * uLatticeScale) - 0.5)))`.
-   This is what makes a solid box read as a *volume of feature maps*. `uLatticeScale` is
-   derived per-instance from the tensor's channel count so a 512-channel layer visibly has
-   finer internal structure than a 16-channel one.
-6. **Warning stripes** — when `meta.z > 0.5`, a 45° animated stripe mask in screen space is
-   mixed toward `--warning`, at 35% strength. Colour is never the only cue: the 2D card also
+   by `0.30 + 0.55 * vActivation`.
+5. **Face grid** — a derivative-anti-aliased grid on the plate faces:
+   `d = abs(fract(vUV * vCells - 0.5) - 0.5) / fwidth(vUV * vCells)`, masked to `abs(N.z) > 0.5`
+   so it lands on the faces and not the edges. `vCells` comes from the tensor's spatial
+   dimension, and is zero for layers that have none. It darkens the albedo by up to 16%
+   rather than adding light, so it survives on a bright ground.
+
+   This replaced a parallax-offset 3D lattice in object space. The lattice was *faking* the
+   interior of a solid box; the geometry now slices each layer into real plates (§2.2), so
+   the depth of a stack is structure rather than a texture, and a second pattern on top of
+   it was competing noise.
+6. **Warning** — when `meta.z > 0.5`, an animated stripe mask concentrated on the silhouette
+   by `pow(1 - NoV, 2.5)`, mixed toward `--warning` and clamped to 75%. Concentrating it on
+   the edge matters: painted flat across the layer, the stripes obliterated the hue that says
+   what kind of layer it is. Colour is never the only cue — the link is dashed and the 2D card
    carries the text explanation, per I5.
-7. **Emissive** — `glowColor * (0.10 + 1.35 * vActivation + 0.45 * paramShare)`.
-   Parameter share drives a constant glow, so the layers that dominate the model's size are
+7. **Emissive** — `mix(albedo, glowColor, 0.55) * (0.02 + 0.55 * vActivation + 0.22 * paramShare)`.
+   Parameter share drives a constant lift, so the layers that dominate the model's size are
    the bright ones even at rest. This is the visualisation's actual information payload.
-8. Output is written in **linear space**; tone mapping happens once, in the composite pass.
+   The coefficients are roughly a third of an earlier revision's, which made every layer glow
+   like a sign; mixing back toward the albedo is what stops a saturated hue washing to white.
+8. **Distance fog** — `1 - exp(-max(dist - uFogNear, 0) * uFogDensity)` toward the background
+   colour, with `uFogNear` and `uFogDensity` scaled by `scene.bounds.radius` so the depth cue
+   is identical whether the stack is three layers or sixty.
+
+   The density is per-theme and deliberately asymmetric — `0.52` dark against `0.045` light.
+   Fog mixes in *scene* space, and inverse-ACES maps a near-white background to ≈1.2 there, so
+   on a light ground a tenth of fog adds more absolute light than a teal carries in its darkest
+   channel and the layer lands as pale mint. Same code, same cue, a quarter of the strength.
+9. Output is written in **linear space**; tone mapping happens once, in the composite pass.
 
 #### 3.4.2 Ribbon shader
 
@@ -489,10 +594,23 @@ value; the render loop damps the actual value toward it with `damp(..., 9.0, dt)
 - **Idle drift:** after 4 s with no input, `theta` gains `0.055 rad/s`. Any pointer or key
   event cancels it instantly and restarts the timer. Drift is disabled entirely under
   `prefers-reduced-motion`.
-- `frame(bounds)` computes the radius that fits the scene:
-  `radius = bounds.radius / Math.sin(fovy / 2) * 1.15`, then also checks the horizontal FOV
-  against the aspect ratio and takes the larger. Framing that only considers vertical FOV
-  breaks on a wide viewport with a long model, which is exactly this app's common case.
+- Default orientation is `theta = -1.42, phi = 1.16` — close to square-on to the flow axis.
+  The obliqueness matters more than it looks: at a three-quarter angle one end of a long
+  stack is much nearer the camera than the other, so a fit that clears the near end leaves
+  the far end at two thirds of the frame and the panel reads as half empty. The remaining
+  tilt is what keeps it three-dimensional.
+- `frame(bounds)` solves the fit against **all eight corners** of the bounding box, projecting
+  each onto the camera basis and taking the largest distance that keeps it inside both FOVs:
+
+  ```
+  depth    = corner · forward
+  distance = max over corners of  max(|corner · right| / tanH, |corner · up| / tanV) + depth
+  ```
+
+  then `× 1.10 + 0.25` for margin. An earlier revision summed the half-extents instead, which
+  added a quarter of the stack's *length* to the distance for a side-on model and pushed the
+  camera far enough back to leave a third of the panel empty. Framing that considers only the
+  vertical FOV fails the same way on a wide viewport, which is this app's common case.
 - `focus(node)` animates `target` and `radius` over `--dur-slow` with `easeInOutCubic`.
 
 Input mapping:
@@ -837,7 +955,7 @@ Extended: `llmClient.test.js` gains the GPT-6 shaping cases. The knowledge-base 
 `modelCatalog.test.js` rather than `ragPipeline.test.js`, because it reads the layer
 table and the validator, not the pipeline.
 
-**Result: 427 tests across eleven suites, all green.**
+**Result: 443 tests across thirteen suites, all green.**
 
 | Suite | Tests |
 |-------|------:|
@@ -971,7 +1089,7 @@ still be validated on a preview, because a CDN can add or drop headers this serv
 
 ## 8. Acceptance criteria
 
-- [x] `npm test` - **427 tests, 0 failures** across eleven suites.
+- [x] `npm test` - **443 tests, 0 failures** across thirteen suites.
 - [x] `npm run build` - succeeds; the renderer is a separate lazy chunk
       (`renderer-*.js`, 17.68 KB gzipped); initial payload +11.17 KB gzipped
       against the previous commit (see 7.3).

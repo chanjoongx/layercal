@@ -86,7 +86,7 @@ export const getLayerTypes = (t) => ({
     name: t.conv2d.name,
     defaultParams: DEFAULT_LAYER_PARAMS.conv2d,
     fields: [
-      { key: 'in_channels', label: t.inChannels, type: 'select', options: [1, 3, 16, 32, 64, 128, 256] },
+      { key: 'in_channels', label: t.inChannels, type: 'select', options: [1, 3, 16, 32, 64, 128, 256, 512] },
       { key: 'out_channels', label: t.outChannels, type: 'select', options: [16, 32, 64, 128, 256, 512] },
       { key: 'kernel_size', label: t.kernelSize, type: 'select', options: [1, 3, 5, 7] },
       { key: 'use_bias', label: t.useBias, type: 'checkbox' }
@@ -103,7 +103,7 @@ export const getLayerTypes = (t) => ({
     name: t.lstm.name,
     defaultParams: DEFAULT_LAYER_PARAMS.lstm,
     fields: [
-      { key: 'input_size', label: t.inputSize, type: 'select', options: [64, 128, 256, 512, 768] },
+      { key: 'input_size', label: t.inputSize, type: 'select', options: [64, 128, 256, 512, 768, 1024, 1536, 2048] },
       { key: 'hidden_size', label: t.hiddenSize, type: 'select', options: [128, 256, 512, 768, 1024] },
       { key: 'num_layers', label: t.numLayers, type: 'select', options: [1, 2, 3, 4] },
       { key: 'bidirectional', label: t.bidirectional, type: 'checkbox' }
@@ -135,7 +135,7 @@ export const getLayerTypes = (t) => ({
     name: t.transformer.name,
     defaultParams: DEFAULT_LAYER_PARAMS.transformer,
     fields: [
-      { key: 'd_model', label: t.modelDim, type: 'select', options: [256, 512, 768, 1024] },
+      { key: 'd_model', label: t.modelDim, type: 'select', options: [64, 128, 256, 512, 768, 1024] },
       { key: 'num_heads', label: t.numHeads, type: 'select', options: [4, 8, 12, 16] },
       { key: 'd_ff', label: t.ffnDim, type: 'select', options: [1024, 2048, 3072, 4096] }
     ],
@@ -209,7 +209,7 @@ export const getLayerTypes = (t) => ({
     name: t.layernorm.name,
     defaultParams: DEFAULT_LAYER_PARAMS.layernorm,
     fields: [
-      { key: 'normalized_shape', label: t.numFeatures, type: 'select', options: [128, 256, 512, 768, 1024] }
+      { key: 'normalized_shape', label: t.numFeatures, type: 'select', options: [16, 32, 64, 128, 256, 512, 768, 1024] }
     ],
     calculate: (params) => params.normalized_shape * 2,
     calculateFLOPs: (params, batch = batchSize, seqLength = seqLen) => params.normalized_shape * batch * seqLength * 5,
@@ -219,7 +219,7 @@ export const getLayerTypes = (t) => ({
     name: t.gru.name,
     defaultParams: DEFAULT_LAYER_PARAMS.gru,
     fields: [
-      { key: 'input_size', label: t.inputSize, type: 'select', options: [64, 128, 256, 512, 768] },
+      { key: 'input_size', label: t.inputSize, type: 'select', options: [64, 128, 256, 512, 768, 1024, 1536, 2048] },
       { key: 'hidden_size', label: t.hiddenSize, type: 'select', options: [128, 256, 512, 768, 1024] },
       { key: 'num_layers', label: t.numLayers, type: 'select', options: [1, 2, 3, 4] },
       { key: 'bidirectional', label: t.bidirectional, type: 'checkbox' }
@@ -251,7 +251,7 @@ export const getLayerTypes = (t) => ({
     name: t.attention.name,
     defaultParams: DEFAULT_LAYER_PARAMS.attention,
     fields: [
-      { key: 'd_model', label: t.modelDim, type: 'select', options: [256, 512, 768, 1024] },
+      { key: 'd_model', label: t.modelDim, type: 'select', options: [64, 128, 256, 512, 768, 1024] },
       { key: 'num_heads', label: t.numHeads, type: 'select', options: [4, 8, 12, 16] }
     ],
     calculate: (params) => {

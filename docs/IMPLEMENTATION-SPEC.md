@@ -658,6 +658,14 @@ value; the render loop damps the actual value toward it with `damp(..., 9.0, dt)
   from the viewer's first drag the angle is theirs and a re-frame moves only the distance and the
   centre. `frameAll(true)` - Reset, double-click, `Home` - clears it again.
 
+  **Resize re-frames.** `resize()` calls `frameAll()` for an unposed camera. Everything the fit was
+  solved against changes with the panel: the aspect, the angle composed for that aspect, and the
+  insets, which are a fraction of a height that no longer holds. Only the projection follows a
+  resize on its own, so without this, narrowing the window cut the model off at both edges — 1440px
+  down to 760px left it spanning 100% of the panel with no margin at all. It reproduces only by
+  *resizing*: loading fresh at each width looks correct, which is how it survived a first pass.
+  A posed camera is left alone, because the pose is the viewer's.
+
   Measured on a 16-layer model in a 1398x520 panel: 83% x 35% of the panel before, 88% x 62%
   after.
 - `focus(node)` animates `target` and `radius` over `--dur-slow` with `easeInOutCubic`.

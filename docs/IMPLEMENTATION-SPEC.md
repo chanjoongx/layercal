@@ -945,6 +945,30 @@ so a screen reader announced the model twice whenever the SVG fallback was up. `
 same job; the panel now paints the renderer's own sky gradient from those tokens. And the mechanical
 token pass over `AIAdvisor` had left 35 template literals interpolating a constant string.
 ---
+### 7.6 CSP verification
+
+`vite preview` does not apply `public/_headers`, so every browser check above ran **without** the
+production Content-Security-Policy. That is the one header this app cannot afford to get wrong,
+because users paste API keys into the page and `connect-src` is what stops an injected script
+posting them somewhere else.
+
+Closed by serving `dist/` through a small static server that parses `_headers` and applies its
+rules the way Cloudflare Pages does, then loading the app in headless Chrome with a
+`securitypolicyviolation` listener installed before any page script runs, and exercising the paths
+most likely to trip the policy:
+
+- first load and the dynamically imported WebGL renderer (`script-src 'self'`),
+- the code-export dialog,
+- the PNG export, which fetches html2canvas at runtime and downloads through a `blob:` URL,
+- the AI advisor dialog.
+
+**Result: zero violations, canvas drawn, `gl.getError()` clean, no console errors.** The release
+adds no origin to any directive - the shaders are strings in the bundle, the fonts are system
+stacks, and the renderer chunk is same-origin - which is why the policy did not have to widen.
+
+This is a pre-flight check, not a substitute for the one in the README: the real deployment should
+still be validated on a preview, because a CDN can add or drop headers this server does not model.
+
 ## 8. Acceptance criteria
 
 - [x] `npm test` - **427 tests, 0 failures** across eleven suites.
@@ -962,6 +986,7 @@ token pass over `AIAdvisor` had left 35 template literals interpolating a consta
       I6, build green, renderer lazily chunked, payload within the corrected budget;
       I7, `package.json` dependencies untouched.
 - [x] Every row of the 7.4 QA matrix passes.
+- [x] The production build runs under the production CSP with zero violations (see 7.6).
 - [x] README contains four Mermaid diagrams; all four render under Mermaid 11
       with no syntax errors and legible proportions.
 - [x] No `TODO`, commented-out block, `debugger`, or `console.log` in `src/`.

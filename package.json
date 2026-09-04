@@ -1,7 +1,7 @@
 {
   "name": "layercal",
-  "version": "2.1.0",
-  "description": "Browser-based deep learning parameter calculator with an AI architecture advisor. FLOPs, memory estimation, and code generation for PyTorch, TensorFlow and JAX.",
+  "version": "3.0.0",
+  "description": "Browser-based deep learning parameter calculator with a real-time WebGL2 architecture viewer and an AI architecture advisor. FLOPs, memory estimation, and code generation for PyTorch, TensorFlow and JAX.",
   "author": "chanjoongx (https://github.com/chanjoongx)",
   "license": "MIT",
   "homepage": "https://layercal.com",
@@ -22,7 +22,11 @@
     "jax",
     "code-generation",
     "rag",
-    "llm"
+    "llm",
+    "webgl",
+    "webgl2",
+    "3d-visualization",
+    "neural-network-visualization"
   ],
   "type": "module",
   "engines": {

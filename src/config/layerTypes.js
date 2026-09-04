@@ -46,11 +46,19 @@ export const DEFAULT_LAYER_PARAMS = {
  */
 export const LAYER_TYPE_IDS = Object.keys(DEFAULT_LAYER_PARAMS);
 
-export const getLayerTypes = (t, isDarkMode) => ({
+/**
+ * The layer table the interface renders from: display strings plus the
+ * calculation functions.
+ *
+ * Colour is deliberately not here. It lives in viz/palette.js, which is the one
+ * table the 2D cards, the SVG diagram and the GPU all read, so a Conv2D cannot
+ * be green in one view and blue in another.
+ *
+ * @param {object} t translation table for the active locale
+ */
+export const getLayerTypes = (t) => ({
   embedding: {
     name: t.embedding.name,
-    icon: '📚',
-    color: isDarkMode ? 'bg-purple-900/30 border-purple-700' : 'bg-purple-100 border-purple-300',
     defaultParams: DEFAULT_LAYER_PARAMS.embedding,
     fields: [
       { key: 'vocab_size', label: t.vocabSize, type: 'number', min: 1, step: 1 },
@@ -63,8 +71,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   linear: {
     name: t.linear.name,
-    icon: '🔗',
-    color: isDarkMode ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-100 border-blue-300',
     defaultParams: DEFAULT_LAYER_PARAMS.linear,
     fields: [
       { key: 'input_dim', label: t.inputDim, type: 'select', options: [64, 128, 256, 512, 768, 1024, 2048] },
@@ -78,8 +84,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   conv2d: {
     name: t.conv2d.name,
-    icon: '🖼️',
-    color: isDarkMode ? 'bg-green-900/30 border-green-700' : 'bg-green-100 border-green-300',
     defaultParams: DEFAULT_LAYER_PARAMS.conv2d,
     fields: [
       { key: 'in_channels', label: t.inChannels, type: 'select', options: [1, 3, 16, 32, 64, 128, 256] },
@@ -97,8 +101,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   lstm: {
     name: t.lstm.name,
-    icon: '🔄',
-    color: isDarkMode ? 'bg-orange-900/30 border-orange-700' : 'bg-orange-100 border-orange-300',
     defaultParams: DEFAULT_LAYER_PARAMS.lstm,
     fields: [
       { key: 'input_size', label: t.inputSize, type: 'select', options: [64, 128, 256, 512, 768] },
@@ -131,8 +133,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   transformer: {
     name: t.transformer.name,
-    icon: '⚡',
-    color: isDarkMode ? 'bg-pink-900/30 border-pink-700' : 'bg-pink-100 border-pink-300',
     defaultParams: DEFAULT_LAYER_PARAMS.transformer,
     fields: [
       { key: 'd_model', label: t.modelDim, type: 'select', options: [256, 512, 768, 1024] },
@@ -159,8 +159,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   batchnorm: {
     name: t.batchnorm.name,
-    icon: '📊',
-    color: isDarkMode ? 'bg-yellow-900/30 border-yellow-700' : 'bg-yellow-100 border-yellow-300',
     defaultParams: DEFAULT_LAYER_PARAMS.batchnorm,
     fields: [
       { key: 'num_features', label: t.numFeatures, type: 'select', options: [16, 32, 64, 128, 256, 512, 768, 1024] }
@@ -172,8 +170,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   dropout: {
     name: t.dropout.name,
-    icon: '💧',
-    color: isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-100 border-gray-300',
     defaultParams: DEFAULT_LAYER_PARAMS.dropout,
     fields: [
       { key: 'rate', label: t.dropoutRate, type: 'number', step: 0.1, min: 0, max: 1 }
@@ -184,8 +180,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   maxpool2d: {
     name: t.maxpool2d.name,
-    icon: '⬇️',
-    color: isDarkMode ? 'bg-teal-900/30 border-teal-700' : 'bg-teal-100 border-teal-300',
     defaultParams: DEFAULT_LAYER_PARAMS.maxpool2d,
     fields: [
       { key: 'kernel_size', label: t.kernelSize, type: 'select', options: [2, 3, 4] }
@@ -200,8 +194,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   avgpool2d: {
     name: t.avgpool2d.name,
-    icon: '📉',
-    color: isDarkMode ? 'bg-cyan-900/30 border-cyan-700' : 'bg-cyan-100 border-cyan-300',
     defaultParams: DEFAULT_LAYER_PARAMS.avgpool2d,
     fields: [
       { key: 'kernel_size', label: t.kernelSize, type: 'select', options: [2, 3, 4] }
@@ -215,8 +207,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   layernorm: {
     name: t.layernorm.name,
-    icon: '🎯',
-    color: isDarkMode ? 'bg-indigo-900/30 border-indigo-700' : 'bg-indigo-100 border-indigo-300',
     defaultParams: DEFAULT_LAYER_PARAMS.layernorm,
     fields: [
       { key: 'normalized_shape', label: t.numFeatures, type: 'select', options: [128, 256, 512, 768, 1024] }
@@ -227,8 +217,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   gru: {
     name: t.gru.name,
-    icon: '🔁',
-    color: isDarkMode ? 'bg-red-900/30 border-red-700' : 'bg-red-100 border-red-300',
     defaultParams: DEFAULT_LAYER_PARAMS.gru,
     fields: [
       { key: 'input_size', label: t.inputSize, type: 'select', options: [64, 128, 256, 512, 768] },
@@ -261,8 +249,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   attention: {
     name: t.attention.name,
-    icon: '👁️',
-    color: isDarkMode ? 'bg-fuchsia-900/30 border-fuchsia-700' : 'bg-fuchsia-100 border-fuchsia-300',
     defaultParams: DEFAULT_LAYER_PARAMS.attention,
     fields: [
       { key: 'd_model', label: t.modelDim, type: 'select', options: [256, 512, 768, 1024] },
@@ -281,8 +267,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   relu: {
     name: t.relu.name,
-    icon: '🔥',
-    color: isDarkMode ? 'bg-lime-900/30 border-lime-700' : 'bg-lime-100 border-lime-300',
     defaultParams: DEFAULT_LAYER_PARAMS.relu,
     fields: [],
     calculate: () => 0,
@@ -292,8 +276,6 @@ export const getLayerTypes = (t, isDarkMode) => ({
   },
   softmax: {
     name: t.softmax.name,
-    icon: '🎲',
-    color: isDarkMode ? 'bg-amber-900/30 border-amber-700' : 'bg-amber-100 border-amber-300',
     defaultParams: DEFAULT_LAYER_PARAMS.softmax,
     fields: [],
     calculate: () => 0,

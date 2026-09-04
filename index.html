@@ -36,7 +36,7 @@
 
     <!-- SEO Meta Tags -->
     <title>LayerCal: Deep Learning Parameter Calculator &amp; AI Architect</title>
-    <meta name="description" content="Free browser tool to calculate neural network parameters, FLOPs and memory for 14 layer types. Describe a model in plain English to get a validated architecture, then export runnable PyTorch, TensorFlow or JAX code." />
+    <meta name="description" content="Free browser tool to build neural networks and watch a forward pass run through them in 3D. Calculate parameters, FLOPs and memory for 14 layer types, describe a model in plain English to get a validated architecture, then export runnable PyTorch, TensorFlow or JAX code." />
     <meta name="keywords" content="deep learning parameter calculator, neural network FLOPs, memory estimation, pytorch code generator, tensorflow, jax, AI architecture advisor, model builder, transformer, LSTM, CNN, RAG, LLM, machine learning tool" />
     <meta name="author" content="chanjoongx" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
@@ -92,8 +92,8 @@
       "applicationSubCategory": "Machine Learning Tool",
       "operatingSystem": "Any",
       "browserRequirements": "Requires JavaScript. Works in Chrome, Firefox, Safari and Edge.",
-      "softwareVersion": "2.1.0",
-      "description": "Free browser-based deep learning calculator with an AI architecture advisor. Calculate parameters, FLOPs and memory for 14 layer types. Describe a model in plain English and get a validated architecture via RAG and an LLM. Generate runnable PyTorch, TensorFlow and JAX code.",
+      "softwareVersion": "3.0.0",
+      "description": "Free browser-based deep learning calculator with a real-time 3D architecture viewer. Watch a forward pass run through your model as tensor volumes sized by shape and lit by parameter share. Calculate parameters, FLOPs and memory for 14 layer types. Describe a model in plain English and get a validated architecture via RAG and an LLM. Generate runnable PyTorch, TensorFlow and JAX code.",
       "url": "https://layercal.com/",
       "screenshot": "https://layercal.com/og-image.png",
       "isAccessibleForFree": true,
@@ -104,6 +104,9 @@
       },
       "license": "https://opensource.org/licenses/MIT",
       "featureList": [
+        "Real-time WebGL2 visualisation of the model as a stack of tensor volumes with an animated forward pass",
+        "Volume size encodes tensor shape, brightness encodes parameter share, particle flow encodes FLOPs",
+        "Isometric SVG fallback when WebGL2 is unavailable, and a static frame under reduced-motion settings",
         "AI Architecture Advisor: describe a model in natural language, receive a validated layer stack",
         "Client-side RAG pipeline with 12 reference architectures",
         "Multi-provider LLM support (Google Gemini, OpenAI, Anthropic Claude) with per-provider model override",

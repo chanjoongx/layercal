@@ -2,34 +2,96 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design tokens.
+ *
+ * Everything the interface is made of resolves through these. The one
+ * deliberate exception is the layer palette, which lives in src/viz/palette.js
+ * because the same colours have to be handed to the GPU as linear floats, and
+ * a value that exists in two places drifts.
+ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    color-scheme: light;
 
-    --radius: 0.5rem;
+    --background: 240 20% 99%;
+    --surface: 0 0% 100%;
+    --surface-raised: 240 30% 98%;
+    --foreground: 230 25% 12%;
+    --muted: 230 24% 96%;
+    --muted-foreground: 230 12% 42%;
+    --border: 230 18% 90%;
+    --border-strong: 230 18% 82%;
+    --input: 230 18% 88%;
+    --ring: 262 83% 58%;
+
+    --accent: 262 83% 58%;
+    --accent-soft: 262 90% 96%;
+    --positive: 160 84% 34%;
+    --warning: 35 92% 45%;
+    --danger: 0 74% 50%;
+
+    /* The renderer's own sky gradient, in the same colours. The viewer panel
+       paints this behind the canvas, so the fade-in has nothing to fade from
+       and a browser without WebGL still gets the right ground. */
+    --viz-sky: 230 43% 97%;
+    --viz-ground: 228 32% 91%;
+
+    /* shadcn compatibility: the card primitives read these names. */
+    --card: var(--surface);
+    --card-foreground: var(--foreground);
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 230 24% 96%;
+    --secondary-foreground: 230 25% 12%;
+
+    --radius: 0.75rem;
+
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --dur-fast: 140ms;
+    --dur-base: 260ms;
+    --dur-slow: 640ms;
+
+    --shadow-sm: 0 1px 2px hsl(230 25% 12% / 0.05), 0 1px 3px hsl(230 25% 12% / 0.04);
+    --shadow-md: 0 4px 12px hsl(230 25% 12% / 0.07), 0 1px 3px hsl(230 25% 12% / 0.05);
+    --shadow-lg: 0 12px 32px hsl(230 25% 12% / 0.10), 0 2px 8px hsl(230 25% 12% / 0.06);
   }
 
   /* Toggled on <html> by LayerCal so the body background follows the theme. */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --border: 217.2 32.6% 17.5%;
+    color-scheme: dark;
+
+    --background: 230 25% 6%;
+    --surface: 230 22% 9%;
+    --surface-raised: 230 20% 12%;
+    --foreground: 220 25% 96%;
+    --muted: 230 18% 15%;
+    --muted-foreground: 225 14% 62%;
+    --border: 230 18% 18%;
+    --border-strong: 230 16% 26%;
+    --input: 230 18% 20%;
+    --ring: 262 90% 70%;
+
+    --accent: 262 90% 70%;
+    --accent-soft: 262 45% 18%;
+    --positive: 158 70% 52%;
+    --warning: 38 95% 60%;
+    --danger: 0 80% 66%;
+
+    --viz-sky: 228 35% 8%;
+    --viz-ground: 225 40% 2%;
+
+    --card: var(--surface);
+    --card-foreground: var(--foreground);
+    --primary: 262 90% 70%;
+    --primary-foreground: 230 25% 6%;
+    --secondary: 230 18% 15%;
+    --secondary-foreground: 220 25% 96%;
+
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.4);
+    --shadow-md: 0 4px 14px hsl(0 0% 0% / 0.45);
+    --shadow-lg: 0 16px 40px hsl(0 0% 0% / 0.55);
   }
 }
 
@@ -40,16 +102,34 @@
 
   body {
     @apply bg-background text-foreground;
+    /*
+     * A large, very soft accent wash anchored to the top of the page. Two
+     * radial gradients cost nothing to paint and give the flat background the
+     * depth the rest of the interface assumes.
+     */
+    background-image:
+      radial-gradient(60rem 32rem at 12% -8%, hsl(var(--accent) / 0.10), transparent 65%),
+      radial-gradient(48rem 28rem at 92% 4%, hsl(200 90% 55% / 0.08), transparent 62%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   /*
    * The app mounts into an empty #root, and the static reference section sits
    * below it. Without a reserved height that section paints at the top of the
    * viewport and then jumps down when React renders, which is both jarring and
-   * a Cumulative Layout Shift hit. 100vh matches the app's own min-h-screen.
+   * a Cumulative Layout Shift hit.
    */
   #root {
     min-height: 100vh;
+  }
+
+  /* A changing number must not resize its own row. */
+  .tabular,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
   }
 
   /*
@@ -58,13 +138,9 @@
    * leaves keyboard users with no idea where they are.
    */
   :focus-visible {
-    outline: 2px solid #7c3aed;
+    outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
-    border-radius: 4px;
-  }
-
-  .dark :focus-visible {
-    outline-color: #a78bfa;
+    border-radius: 6px;
   }
 
   /* A mouse click should not leave a ring behind. */
@@ -73,19 +149,142 @@
   }
 
   ::selection {
-    background-color: rgb(196 181 253 / 0.55);
-    color: rgb(30 27 75);
+    background-color: hsl(var(--accent) / 0.28);
+    color: hsl(var(--foreground));
   }
 
-  .dark ::selection {
-    background-color: rgb(109 40 217 / 0.6);
-    color: rgb(243 244 246);
+  /* Scrollbars inside panels, so a light thumb does not sit on a dark card. */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border-strong)) transparent;
+  }
+  .scroll-slim::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border-strong));
+    border-radius: 999px;
+  }
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /*
+   * Layer chips and cards. The colour roles are set inline from the shared
+   * palette, so a Conv2D is the same green on the canvas, in the SVG diagram
+   * and on the GPU.
+   *
+   * These are plain rgba() strings computed in JS rather than color-mix(), on
+   * purpose: Chrome resolves color-mix() to an oklab() colour in the computed
+   * style, and html2canvas throws on it, which takes the PNG export down.
+   */
+  .layer-surface {
+    background-color: var(--layer-fill);
+    border-color: var(--layer-line);
+  }
+
+  .layer-surface:hover {
+    background-color: var(--layer-fill-hover);
+  }
+
+  .layer-dot {
+    background-color: var(--layer);
+    box-shadow: 0 0 0 3px var(--layer-fill-hover);
+  }
+
+  /* Panels: a hairline, a soft shadow and a top highlight that reads as glass. */
+  .panel {
+    background-color: hsl(var(--surface) / 0.92);
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(12px);
+  }
+
+  /* The 3D panel's ground, matching the renderer's sky gradient exactly. */
+  .viz-surface {
+    background-image: linear-gradient(
+      to bottom,
+      hsl(var(--viz-sky)),
+      hsl(var(--viz-ground))
+    );
+  }
+
+  .panel-raised {
+    background-color: hsl(var(--surface-raised));
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px);
+  }
+
+  /* Metric tiles in the summary column. */
+  .metric {
+    position: relative;
+    overflow: hidden;
+    border-radius: calc(var(--radius) - 2px);
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--surface-raised));
+    transition: border-color var(--dur-fast) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out);
+  }
+
+  .metric::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--metric-accent, hsl(var(--accent)));
+  }
+
+  .metric:hover {
+    border-color: hsl(var(--border-strong));
+  }
+
+  .press {
+    transition: transform var(--dur-fast) var(--ease-out),
+                background-color var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out);
+  }
+
+  .press:active {
+    transform: scale(0.97);
+  }
+
+  /* The drop target's dashed border animates only while a drag is in flight. */
+  .dropzone-active {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--accent) / 0.10) 25%, transparent 25%,
+      transparent 50%, hsl(var(--accent) / 0.10) 50%,
+      hsl(var(--accent) / 0.10) 75%, transparent 75%
+    );
+    background-size: 22px 22px;
+    animation: dropzone-drift 900ms linear infinite;
+  }
+
+  @keyframes dropzone-drift {
+    to { background-position: 22px 0; }
+  }
+
+  /* Entry animation for a newly added layer card. */
+  .enter-rise {
+    animation: enter-rise var(--dur-base) var(--ease-out) both;
+  }
+
+  @keyframes enter-rise {
+    from { opacity: 0; transform: translateY(6px) scale(0.995); }
+    to { opacity: 1; transform: none; }
   }
 }
 
 /*
- * Respect the OS "reduce motion" setting. The UI leans on transitions and a
- * spinner, both of which can trigger vestibular symptoms.
+ * Respect the OS "reduce motion" setting. The UI leans on transitions, a
+ * spinner and a continuously animating 3D view, all of which can trigger
+ * vestibular symptoms. The renderer checks the same query in JS and freezes
+ * its own clock; this covers everything CSS drives.
  */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -113,9 +312,9 @@
   top: 0.5rem;
   padding: 0.625rem 1rem;
   border-radius: 0.5rem;
-  background-color: #7c3aed;
-  color: #fff;
+  background-color: hsl(var(--accent));
+  color: hsl(var(--primary-foreground));
   font-size: 0.875rem;
   font-weight: 600;
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2);
+  box-shadow: var(--shadow-lg);
 }

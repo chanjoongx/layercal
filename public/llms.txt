@@ -3,8 +3,10 @@
 > A free, browser-based calculator for deep learning models. Build a network by
 > dragging layers onto a canvas and get parameter counts, forward-pass FLOPs and
 > memory estimates in real time, then export the model as runnable PyTorch,
-> TensorFlow or JAX code. Everything runs client-side: no account, no backend,
-> nothing uploaded. Open source under the MIT licence.
+> TensorFlow or JAX code. A real-time WebGL2 view draws the same model as a stack
+> of tensor volumes with an animated forward pass running through it. Everything
+> runs client-side: no account, no backend, nothing uploaded. Open source under
+> the MIT licence.
 
 LayerCal covers 14 layer types: Embedding, Linear, Conv2D, LSTM, GRU,
 Transformer, Self-Attention, BatchNorm, LayerNorm, Dropout, MaxPool2D,
@@ -14,6 +16,17 @@ An AI Architecture Advisor turns a plain-English description into a validated
 layer stack. It is bring-your-own-key and supports Google Gemini, OpenAI and
 Anthropic Claude. The user's API key stays in their browser and is sent only to
 the provider they choose.
+
+## What the 3D view encodes
+
+- Volume size: the shape of the tensor the layer emits, log-compressed so a
+  50,000-word embedding and a 64-unit dense layer are both visible
+- Resting brightness: the layer's share of the model's total parameters
+- Travelling pulse: a forward pass, sweeping input to output on a loop
+- Particle density and speed: the layer's share of total FLOPs
+- Ribbon width: the feature dimension entering and leaving each layer
+- Amber stripes and a dashed link: a cross-layer dimension mismatch, which is
+  the same condition the canvas flags in text
 
 ## Key formulas
 

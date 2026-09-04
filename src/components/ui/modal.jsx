@@ -105,8 +105,8 @@ export default function Modal({
     <div
       ref={backdropRef}
       onMouseDown={handleBackdropMouseDown}
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${
-        isDarkMode ? 'bg-black/70' : 'bg-black/50'
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm ${
+        isDarkMode ? 'bg-black/70' : 'bg-slate-900/40'
       }`}
     >
       <div
@@ -115,9 +115,7 @@ export default function Modal({
         aria-modal="true"
         aria-labelledby={labelledBy}
         tabIndex={-1}
-        className={`relative rounded-2xl shadow-2xl transition-all duration-200 ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
-        } ${className}`}
+        className={`relative animate-slide-up rounded-xl border border-border bg-surface shadow-lg ${className}`}
       >
         {children}
       </div>

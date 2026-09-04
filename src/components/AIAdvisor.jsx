@@ -6,6 +6,12 @@ import { generateArchitecture } from '@/utils/ragPipeline';
 import { DEFAULT_MODELS } from '@/utils/llmClient';
 import { LLM_ERROR_KEYS } from '@/config/translations';
 import { getLayerTypes, formatNumber } from '@/config/layerTypes';
+import { modelsFor, findModel, priceLabel, CATALOG_VERIFIED_ON } from '@/config/modelCatalog';
+import { buildScene } from '@/viz/sceneGraph';
+import ModelDiagram2D from '@/components/ModelDiagram2D';
+
+/** Sentinel for the "type an id yourself" option in the model picker. */
+const CUSTOM_MODEL = '__custom__';
 
 const PROVIDERS = [
   {
@@ -46,7 +52,7 @@ const EXAMPLE_PROMPTS = [
   'Tabular data classifier with 3 hidden layers',
 ];
 
-export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLayers }) {
+export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLayers, layerTypes }) {
   // ── Persisted state ────────────────────────
   const [provider, setProvider] = useState(() =>
     safeLocalStorage.getItem(STORAGE_KEYS.provider, 'gemini')
@@ -63,6 +69,14 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
     return safeLocalStorage.getItem(modelStorageKey(savedProvider), '');
   });
   const [showKey, setShowKey] = useState(false);
+  // The picker only falls back to a free-text field when the saved id is not
+  // one the catalogue knows, so a retired model the user pinned by hand stays
+  // editable instead of being silently swapped for a catalogue entry.
+  const [useCustomModel, setUseCustomModel] = useState(() => {
+    const savedProvider = safeLocalStorage.getItem(STORAGE_KEYS.provider, 'gemini');
+    const saved = safeLocalStorage.getItem(modelStorageKey(savedProvider), '');
+    return Boolean(saved) && !findModel(savedProvider, saved);
+  });
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -76,7 +90,10 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
   const providerMenuRef = useRef(null);
   const abortRef = useRef(null);
 
-  const LAYER_TYPES = useMemo(() => getLayerTypes(t, isDarkMode), [t, isDarkMode]);
+  // The parent already built this for the canvas; recomputing it here would
+  // produce a second, equal table on every render of the dialog.
+  const fallbackLayerTypes = useMemo(() => getLayerTypes(t), [t]);
+  const LAYER_TYPES = layerTypes || fallbackLayerTypes;
 
   // Close provider dropdown on outside click
   useEffect(() => {
@@ -106,7 +123,9 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
     setShowProviderMenu(false);
     // load previously saved key/model for this provider (if any)
     setApiKey(safeLocalStorage.getItem(apiKeyStorageKey(newProvider), ''));
-    setModel(safeLocalStorage.getItem(modelStorageKey(newProvider), ''));
+    const savedModel = safeLocalStorage.getItem(modelStorageKey(newProvider), '');
+    setModel(savedModel);
+    setUseCustomModel(Boolean(savedModel) && !findModel(newProvider, savedModel));
     setError(null);
   }, []);
 
@@ -137,6 +156,17 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
 
   const handleModelChange = useCallback((e) => {
     const val = e.target.value;
+    setModel(val);
+    safeLocalStorage.setItem(modelStorageKey(provider), val);
+  }, [provider]);
+
+  const handleModelSelect = useCallback((e) => {
+    const val = e.target.value;
+    if (val === CUSTOM_MODEL) {
+      setUseCustomModel(true);
+      return;
+    }
+    setUseCustomModel(false);
     setModel(val);
     safeLocalStorage.setItem(modelStorageKey(provider), val);
   }, [provider]);
@@ -213,6 +243,17 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
     }, 0);
   }, [result, LAYER_TYPES]);
 
+  const catalogModels = useMemo(() => modelsFor(provider), [provider]);
+  const activeModelId = model.trim() || DEFAULT_MODELS[provider];
+  const activeModel = findModel(provider, activeModelId);
+
+  // The proposal is drawn with the same scene graph the canvas uses, so what
+  // the user approves is exactly what lands.
+  const previewScene = useMemo(
+    () => (result?.layers ? buildScene(result.layers, LAYER_TYPES) : null),
+    [result, LAYER_TYPES]
+  );
+
   const errorText = error
     ? (error.key && t[error.key]) || error.detail
     : null;
@@ -240,9 +281,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
     }
   };
 
-  const inputClass = isDarkMode
-    ? 'bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-400'
-    : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400';
+  const inputClass = 'bg-surface-raised border-input text-foreground placeholder-muted-foreground';
 
 
   // ── Render ─────────────────────────────────
@@ -257,16 +296,14 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
     >
       <>
         {/* ── Header ────────────────────────── */}
-        <div className={`flex items-center justify-between p-4 border-b shrink-0 ${
-          isDarkMode ? 'border-gray-700' : 'border-gray-200'
-        }`}>
+        <div className="flex items-center justify-between p-4 border-b shrink-0 border-border">
           <div className="flex items-center gap-2">
-            <Sparkles className={`w-5 h-5 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+            <Sparkles className="w-5 h-5 text-accent" />
             <div>
-              <h2 id="advisor-title" className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="advisor-title" className="text-lg font-bold text-foreground">
                 {t.aiAdvisor || 'AI Architecture Advisor'}
               </h2>
-              <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className="text-xs text-muted-foreground">
                 {t.aiAdvisorDesc || 'Describe your model and AI designs the layers'}
               </p>
             </div>
@@ -274,11 +311,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
           <button
             onClick={onClose}
             aria-label={t.closeModal || 'Close'}
-            className={`p-2 rounded-lg transition-colors ${
-              isDarkMode
-                ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
-                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-            }`}
+            className="p-2 rounded-lg transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <X className="w-5 h-5" />
           </button>
@@ -289,7 +322,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
 
           {/* API Settings */}
           <div className="space-y-2">
-            <label htmlFor="advisor-api-key" className={`text-xs font-medium block ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            <label htmlFor="advisor-api-key" className="text-xs font-medium block text-muted-foreground">
               {t.apiProvider || 'API Provider'}
             </label>
             <div className="flex gap-2">
@@ -299,19 +332,13 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
                   onClick={() => setShowProviderMenu(!showProviderMenu)}
                   aria-haspopup="listbox"
                   aria-expanded={showProviderMenu}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition-colors ${
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-                      : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-                  }`}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition-colors bg-surface-raised border-input text-foreground hover:bg-muted"
                 >
                   {selectedProvider.name}
                   <ChevronDown className="w-3 h-3" />
                 </button>
                 {showProviderMenu && (
-                  <div role="listbox" className={`absolute left-0 top-full mt-1 w-48 rounded-lg shadow-lg z-10 ${
-                    isDarkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-200'
-                  }`}>
+                  <div role="listbox" className="absolute left-0 top-full mt-1 w-48 rounded-lg shadow-lg z-10 bg-surface border border-border">
                     {PROVIDERS.map(p => (
                       <button
                         key={p.id}
@@ -320,12 +347,12 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
                         onClick={() => handleProviderChange(p.id)}
                         className={`w-full text-left px-3 py-2 text-sm first:rounded-t-lg last:rounded-b-lg ${
                           provider === p.id
-                            ? (isDarkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600')
-                            : (isDarkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-50')
+                            ? ('bg-accent-soft text-accent')
+                            : ('text-foreground hover:bg-muted')
                         }`}
                       >
                         <div>{p.name}</div>
-                        <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{p.hint}</div>
+                        <div className="text-xs text-muted-foreground">{p.hint}</div>
                       </button>
                     ))}
                   </div>
@@ -351,7 +378,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
                       onClick={handleClearKey}
                       aria-label={t.clearKey || 'Clear'}
                       title={t.clearKey || 'Clear'}
-                      className={isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}
+                      className={'text-muted-foreground hover:text-foreground'}
                       tabIndex={-1}
                     >
                       <X className="w-4 h-4" />
@@ -360,7 +387,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
                   <button
                     onClick={() => setShowKey(!showKey)}
                     aria-label={showKey ? 'Hide API key' : 'Show API key'}
-                    className={isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}
+                    className={'text-muted-foreground hover:text-foreground'}
                     tabIndex={-1}
                   >
                     {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -370,7 +397,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
             </div>
 
             {/* Security note + key link */}
-            <div className={`flex items-center justify-between gap-2 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <Lock className="w-3 h-3 shrink-0" />
                 {t.apiKeySecurityNote || 'Stored locally. Never sent to our servers.'}
@@ -379,9 +406,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
                 href={selectedProvider.keyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`flex items-center gap-1 shrink-0 underline ${
-                  isDarkMode ? 'hover:text-gray-300' : 'hover:text-gray-600'
-                }`}
+                className="flex items-center gap-1 shrink-0 underline hover:text-foreground"
               >
                 {t.apiProvider || 'API key'}
                 <ExternalLink className="w-3 h-3" />
@@ -392,33 +417,58 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
             <button
               onClick={() => setShowAdvanced(v => !v)}
               aria-expanded={showAdvanced}
-              className={`flex items-center gap-1 text-xs transition-colors ${
-                isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className="flex items-center gap-1 text-xs transition-colors text-muted-foreground hover:text-foreground"
             >
               {showAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
               {t.advanced || 'Advanced'}
             </button>
 
             {showAdvanced && (
-              <div className={`space-y-2 rounded-lg border p-3 ${
-                isDarkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-gray-50'
-              }`}>
-                <label htmlFor="advisor-model" className={`text-xs font-medium block ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <div className="space-y-2 rounded-lg border p-3 border-border bg-surface-raised">
+                <label htmlFor="advisor-model" className="text-xs font-medium block text-muted-foreground">
                   {t.modelLabel || 'Model'}
                 </label>
-                <input
+
+                <select
                   id="advisor-model"
                   name="advisor-model"
-                  type="text"
-                  value={model}
-                  onChange={handleModelChange}
-                  placeholder={DEFAULT_MODELS[provider]}
-                  className={`w-full px-3 py-2 rounded-lg text-sm border font-mono transition-colors ${inputClass}`}
-                  autoComplete="off"
-                  spellCheck="false"
-                />
-                <label className={`flex items-center gap-2 text-xs cursor-pointer ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  value={useCustomModel ? CUSTOM_MODEL : activeModelId}
+                  onChange={handleModelSelect}
+                  className={`w-full px-3 py-2 rounded-lg text-sm border transition-colors ${inputClass}`}
+                >
+                  {catalogModels.map(entry => {
+                    const price = priceLabel(entry);
+                    const tier = t[`tier${entry.tier.charAt(0).toUpperCase()}${entry.tier.slice(1)}`] || entry.tier;
+                    const detail = price || (entry.noteKey && t[entry.noteKey]) || entry.note || '';
+                    return (
+                      <option key={entry.id} value={entry.id}>
+                        {`${entry.label} · ${tier}${detail ? ` · ${detail}` : ''}`}
+                      </option>
+                    );
+                  })}
+                  <option value={CUSTOM_MODEL}>{t.modelCustom || 'Custom model ID'}</option>
+                </select>
+
+                {useCustomModel && (
+                  <input
+                    id="advisor-model-custom"
+                    name="advisor-model-custom"
+                    type="text"
+                    value={model}
+                    onChange={handleModelChange}
+                    placeholder={DEFAULT_MODELS[provider]}
+                    aria-label={t.modelCustom || 'Custom model ID'}
+                    className={`w-full px-3 py-2 rounded-lg text-sm border font-mono transition-colors ${inputClass}`}
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                )}
+
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  <span className="font-mono">{activeModelId}</span>
+                  {activeModel ? ` · verified ${CATALOG_VERIFIED_ON}` : ''}
+                </p>
+                <label className="flex items-center gap-2 text-xs cursor-pointer text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={rememberKey}
@@ -433,7 +483,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
 
           {/* Query input */}
           <div className="space-y-2">
-            <label htmlFor="advisor-query" className={`text-xs font-medium block ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            <label htmlFor="advisor-query" className="text-xs font-medium block text-muted-foreground">
               {t.queryLabel || 'What kind of model do you need?'}
             </label>
             <textarea
@@ -447,14 +497,14 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
               rows={3}
               className={`w-full px-3 py-2 rounded-lg text-sm border resize-none transition-colors ${inputClass}`}
             />
-            <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className="text-xs text-muted-foreground">
               Ctrl+Enter {t.toGenerate || 'to generate'}
             </div>
           </div>
 
           {/* Example prompts */}
           <div className="space-y-1.5">
-            <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span className="text-xs text-muted-foreground">
               {t.examplePrompts || 'Try:'}
             </span>
             <div className="flex flex-wrap gap-1.5">
@@ -462,11 +512,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
                 <button
                   key={i}
                   onClick={() => handleExampleClick(ex)}
-                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                    isDarkMode
-                      ? 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-gray-200'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
-                  }`}
+                  className="px-2 py-1 text-xs rounded-md transition-colors bg-muted text-muted-foreground hover:bg-border hover:text-foreground"
                 >
                   {ex}
                 </button>
@@ -477,19 +523,13 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
           {/* Generate / Cancel */}
           {isLoading ? (
             <div className="flex gap-2">
-              <div className={`flex-1 py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 ${
-                isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
-              }`}>
+              <div className="flex-1 py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 bg-muted text-muted-foreground">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 {t.generating || 'Generating...'}
               </div>
               <button
                 onClick={handleCancel}
-                className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                  isDarkMode
-                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                    : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-                }`}
+                className="px-4 py-2.5 rounded-lg font-medium text-sm transition-colors bg-muted text-foreground hover:bg-border"
               >
                 {t.cancel || 'Cancel'}
               </button>
@@ -501,9 +541,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
               className={`w-full py-2.5 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${
                 canGenerate
                   ? 'bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white shadow-md hover:shadow-lg active:scale-[0.98]'
-                  : (isDarkMode
-                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed')
+                  : ('bg-muted text-muted-foreground cursor-not-allowed')
               }`}
             >
               <Zap className="w-4 h-4" />
@@ -515,15 +553,13 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
           {errorText && (
             <div
               role="alert"
-              className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
-                isDarkMode ? 'bg-red-900/20 text-red-300 border border-red-800' : 'bg-red-50 text-red-700 border border-red-200'
-              }`}
+              className="flex items-start gap-2 p-3 rounded-lg text-sm border border-danger/40 bg-danger/10 text-danger"
             >
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <div className="min-w-0">
                 <div>{errorText}</div>
                 {errorDetail && (
-                  <div className={`mt-1 text-xs break-words ${isDarkMode ? 'text-red-400/70' : 'text-red-500/80'}`}>
+                  <div className="mt-1 text-xs break-words text-danger/80">
                     {errorDetail}
                   </div>
                 )}
@@ -533,31 +569,40 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
 
           {/* Result preview */}
           {result && (
-            <div className={`rounded-lg border p-3 space-y-3 ${
-              isDarkMode ? 'bg-gray-900/50 border-gray-700' : 'bg-gray-50 border-gray-200'
-            }`}>
+            <div className="rounded-lg border p-3 space-y-3 bg-surface-raised border-border">
               <div className="flex items-baseline justify-between gap-2">
-                <div className={`text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                <div className="text-sm font-medium text-foreground">
                   {t.recommendedArch || 'Recommended Architecture'} ({result.layers.length} {t.layers || 'layers'})
                 </div>
-                <div className={`text-xs font-mono shrink-0 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                <div className="text-xs font-mono shrink-0 text-accent">
                   {formatNumber(estimatedParams)}
                 </div>
               </div>
+
+              {/* What the proposal actually looks like. A list of layer names
+                  does not tell you the shape of the model; this does. */}
+              {previewScene && (
+                <div className="rounded-md border p-1 border-border bg-surface-raised">
+                  <ModelDiagram2D
+                    scene={previewScene}
+                    isDarkMode={isDarkMode}
+                    className="h-28 w-full"
+                    label={t.recommendedArch || 'Recommended architecture'}
+                  />
+                </div>
+              )}
 
               {/* Layer list */}
               <div className="space-y-1">
                 {result.layers.map((layer, idx) => (
                   <div
                     key={idx}
-                    className={`flex items-center gap-2 px-2 py-1 rounded text-xs font-mono ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                    }`}
+                    className="flex items-center gap-2 px-2 py-1 rounded text-xs font-mono text-muted-foreground"
                   >
-                    <span className={`w-5 text-right ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <span className="w-5 text-right text-muted-foreground">
                       {idx + 1}
                     </span>
-                    <span className={`${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                    <span className="text-accent">
                       {formatLayerPreview(layer)}
                     </span>
                   </div>
@@ -566,13 +611,13 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
 
               {/* Warnings */}
               {result.warnings?.length > 0 && (
-                <div className={`text-xs space-y-0.5 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                <div className="text-xs space-y-0.5 text-warning">
                   {result.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
                 </div>
               )}
 
               {/* Provenance */}
-              <div className={`text-xs space-y-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <div className="text-xs space-y-0.5 text-muted-foreground">
                 {result.references?.length > 0 && (
                   <div>{t.referencedModels || 'Referenced'}: {result.references.map(r => r.name).join(', ')}</div>
                 )}
@@ -591,7 +636,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
 
         {/* ── Footer ────────────────────────── */}
         {result && (
-          <div className={`p-4 border-t shrink-0 flex gap-2 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className="p-4 border-t shrink-0 flex gap-2 border-border">
             <button
               onClick={() => handleApply('replace')}
               className="flex-1 py-2.5 rounded-lg font-medium text-sm bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
@@ -601,11 +646,7 @@ export default function AIAdvisor({ isDarkMode, t, onApply, onClose, canvasHasLa
             {canvasHasLayers && (
               <button
                 onClick={() => handleApply('append')}
-                className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-colors ${
-                  isDarkMode
-                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                    : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-                }`}
+                className="px-4 py-2.5 rounded-lg font-medium text-sm transition-colors bg-muted text-foreground hover:bg-border"
               >
                 {t.applyAppend || 'Append'}
               </button>

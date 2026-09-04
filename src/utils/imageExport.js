@@ -39,7 +39,9 @@ export const exportToImage = async (element, options = {}) => {
 
     const canvas = await html2canvas(element, {
       scale: 2,
-      backgroundColor: isDarkMode ? '#1f2937' : '#ffffff',
+      // Matches --background in index.css, so the export does not sit on a
+      // different ground colour from the app it is a picture of.
+      backgroundColor: isDarkMode ? '#0b0d13' : '#fcfcfd',
       logging: false,
       useCORS: true,
       allowTaint: false,
@@ -51,7 +53,11 @@ export const exportToImage = async (element, options = {}) => {
           || clonedDoc.querySelector('[data-capture-area]')
           || clonedDoc.body;
 
-        root.querySelectorAll('[data-html2canvas-ignore]').forEach(el => {
+        // Anything visually hidden must stay hidden in a screenshot. `.sr-only`
+        // hides itself with a 1px box plus `overflow: hidden`, which the
+        // truncation fix below would undo — turning every screen-reader label
+        // and the viewer's hidden layer list into visible text down the margin.
+        root.querySelectorAll('[data-html2canvas-ignore], .sr-only').forEach(el => {
           el.style.display = 'none';
         });
 

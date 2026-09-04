@@ -1,5 +1,8 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { Trash2, GripVertical, Plus, Info, Layers, Moon, Sun, Globe, ChevronDown, ChevronUp, Camera, X, Mail, Code, Sparkles, Eraser, Check, TriangleAlert } from 'lucide-react';
+import {
+  Trash2, GripVertical, Info, Layers, Moon, Sun, Globe, ChevronDown, ChevronUp,
+  Camera, X, Mail, Code, Sparkles, Eraser, Check, TriangleAlert,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import Modal from '@/components/ui/modal';
@@ -9,13 +12,21 @@ import { safeLocalStorage, detectSystemDarkMode, resolveInitialLanguage } from '
 import { exportToImage, validateExportElement } from '@/utils/imageExport';
 import { validateModelDimensions } from '@/utils/modelValidation';
 import { generatePyTorchCode, generateTensorFlowCode, generateJAXCode } from '@/utils/codeGenerator';
+import { useAnimatedNumber } from '@/utils/useAnimatedNumber';
+import { paletteStyle, paintFor } from '@/viz/palette';
 import AIAdvisor from '@/components/AIAdvisor';
+import ModelViewer from '@/components/ModelViewer';
 
 /**
- * LayerCal: deep learning parameter calculator and AI architecture advisor.
+ * LayerCal: deep learning parameter calculator, live 3D architecture viewer
+ * and AI architecture advisor.
  *
  * State that survives a reload: the model itself, language, dark mode, and the
  * AI Advisor's provider/key (the last of those lives in AIAdvisor).
+ *
+ * The 3D panel and the layer list are one interface, not two views of the same
+ * data: selecting in either reflects in the other, and both read the same
+ * scene graph.
  */
 
 /**
@@ -86,6 +97,7 @@ export default function LayerCal() {
   const [memoryMode, setMemoryMode] = useState('inference');
   const [precision, setPrecision] = useState('fp32');
   const [toast, setToast] = useState(null);
+  const [selectedLayerId, setSelectedLayerId] = useState(null);
 
   // Dark mode init: localStorage → system preference
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -102,11 +114,16 @@ export default function LayerCal() {
   const languageMenuRef = useRef(null);
   const captureAreaRef = useRef(null);
   const toastTimerRef = useRef(null);
+  const layerCardRefs = useRef(new Map());
+  // The viewer parks a synchronous render function here, so PNG export can
+  // force a frame before html2canvas reads the canvas back.
+  const captureRenderRef = useRef(null);
 
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
-  // LAYER_TYPES recalculates only on language / dark-mode change
-  const LAYER_TYPES = useMemo(() => getLayerTypes(t, isDarkMode), [t, isDarkMode]);
+  // Language only. The table carries no colour, so a theme toggle no longer
+  // rebuilds it - and therefore no longer rebuilds the whole 3D scene.
+  const LAYER_TYPES = useMemo(() => getLayerTypes(t), [t]);
 
   /**
    * @param {string} message
@@ -152,15 +169,17 @@ export default function LayerCal() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Escape closes the language menu. Dialogs handle their own via <Modal>.
+  // Escape closes the language menu, then clears the 3D selection. Dialogs
+  // handle their own Escape via <Modal>.
   useEffect(() => {
-    if (!showLanguageMenu) return;
     const handleKey = (e) => {
-      if (e.key === 'Escape') setShowLanguageMenu(false);
+      if (e.key !== 'Escape') return;
+      if (showLanguageMenu) setShowLanguageMenu(false);
+      else if (selectedLayerId) setSelectedLayerId(null);
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [showLanguageMenu]);
+  }, [showLanguageMenu, selectedLayerId]);
 
   const handleLanguageChange = useCallback((newLang) => {
     setLanguage(newLang);
@@ -179,11 +198,13 @@ export default function LayerCal() {
   const addLayer = useCallback((type) => {
     const layerConfig = LAYER_TYPES[type];
     if (!layerConfig) return;
+    const id = nextLayerId();
     setModelLayers(prev => [...prev, {
-      id: nextLayerId(),
+      id,
       type,
       params: { ...layerConfig.defaultParams },
     }]);
+    setSelectedLayerId(id);
   }, [LAYER_TYPES]);
 
   const addLayersFromAdvisor = useCallback((layerConfigs, mode = 'append') => {
@@ -195,11 +216,13 @@ export default function LayerCal() {
         params: { ...LAYER_TYPES[config.type].defaultParams, ...config.params },
       }));
     setModelLayers(prev => mode === 'replace' ? newLayers : [...prev, ...newLayers]);
+    setSelectedLayerId(null);
     setShowAdvisorModal(false);
   }, [LAYER_TYPES]);
 
   const deleteLayer = useCallback((id) => {
     setModelLayers(prev => prev.filter(layer => layer.id !== id));
+    setSelectedLayerId(prev => (prev === id ? null : prev));
   }, []);
 
   /**
@@ -210,6 +233,7 @@ export default function LayerCal() {
     if (modelLayers.length === 0) return;
     const snapshot = modelLayers;
     setModelLayers([]);
+    setSelectedLayerId(null);
     showToast(t.layersCleared || 'All layers removed.', {
       duration: 8000,
       action: {
@@ -309,6 +333,27 @@ export default function LayerCal() {
     }
   }, [modelLayers, selectedFramework]);
 
+  const modelSizeBytes = totalParams * 4; // FP32 reference size
+
+  const animatedParams = useAnimatedNumber(totalParams);
+  const animatedFlops = useAnimatedNumber(totalFLOPs);
+  const animatedSize = useAnimatedNumber(modelSizeBytes);
+  const animatedMemory = useAnimatedNumber(memoryEstimate);
+
+  // ── Selection ────────────────────────────────────
+  const focusLayerCard = useCallback((id) => {
+    const el = layerCardRefs.current.get(id);
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, []);
+
+  const handleSelectFromCanvas = useCallback((id) => {
+    setSelectedLayerId(id);
+  }, []);
+
+  const handleSelectCard = useCallback((id) => {
+    setSelectedLayerId(prev => (prev === id ? null : id));
+  }, []);
+
   // ── Drag & drop ──────────────────────────────────
   const handleDragStart = useCallback((e, type) => {
     setDraggedType(type);
@@ -368,6 +413,10 @@ export default function LayerCal() {
       return;
     }
 
+    // html2canvas copies the canvas' current pixels rather than re-running the
+    // GPU, so a paused or offscreen viewer would export as an empty rectangle.
+    captureRenderRef.current?.();
+
     const result = await exportToImage(element, { isDarkMode });
     if (!result.ok) {
       showToast(exportErrorMessage(result.error));
@@ -391,17 +440,23 @@ export default function LayerCal() {
     [language]
   );
 
-  const modelSizeBytes = totalParams * 4; // FP32 reference size
+  // The summary accents come from the one colour table rather than being three
+  // more hexes that would drift away from the layers they describe.
+  const accentFor = (type) => {
+    const paint = paintFor(type);
+    return isDarkMode ? paint.hexDark : paint.hex;
+  };
+
+  const iconButton = 'press rounded-lg border border-border bg-surface p-2 text-muted-foreground shadow-sm hover:border-border-strong hover:text-foreground';
+  const fieldClass = 'w-full rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground transition-colors focus:border-accent';
 
   return (
-    <div className={`min-h-screen transition-colors duration-200 ${
-      isDarkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-purple-50 via-white to-blue-50'
-    }`}>
+    <div className="min-h-screen">
       <a href="#main-content" className="skip-link">
         {t.skipToContent || 'Skip to content'}
       </a>
 
-      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-7xl">
+      <div className="container mx-auto max-w-[92rem] px-3 py-4 sm:px-5 sm:py-6">
         {/* Header
           ┌─ 3단계 브레이크포인트 전략 ──────────────────────────────────┐
           │ ~767px (mobile)  : 2행 레이아웃                              │
@@ -412,118 +467,97 @@ export default function LayerCal() {
           │ 1024px~ (desktop/lg) : 1행, 액션 버튼에 텍스트까지           │
           └──────────────────────────────────────────────────────────────┘
         */}
-        <header className="mb-4 sm:mb-6">
-          <div className={`px-3 sm:px-4 py-3 rounded-xl ${
-            isDarkMode
-              ? 'bg-gray-800/90 border border-gray-700'
-              : 'bg-white/80 backdrop-blur-sm border border-gray-200/80 shadow-sm'
-          }`}>
+        <header className="mb-4 sm:mb-5">
+          <div className="panel px-3 py-2.5 sm:px-4">
 
             {/* Row 1: 항상 표시 */}
             <div className="flex items-center justify-between gap-2">
 
               {/* 왼쪽: 로고 + 타이틀. min-w-0 필수 */}
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex min-w-0 items-center gap-2.5">
                 <img
                   src="/calculator-icon.svg"
                   alt=""
                   width="44"
                   height="44"
-                  className="w-8 h-8 md:w-11 md:h-11 flex-shrink-0"
+                  className="h-9 w-9 flex-shrink-0 md:h-11 md:w-11"
                 />
-                <h1 className={`text-xl md:text-2xl lg:text-3xl font-bold truncate ${
-                  isDarkMode ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {t.title}
-                </h1>
+                <div className="min-w-0">
+                  <h1 className="truncate text-xl font-bold tracking-tight text-foreground md:text-2xl">
+                    {t.title}
+                  </h1>
+                  <p className="hidden truncate text-xs text-muted-foreground lg:block">
+                    {t.subtitle}
+                  </p>
+                </div>
               </div>
 
               {/* 오른쪽: 버튼 묶음. flex-shrink-0, 타이틀이 truncate로 양보 */}
-              <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="flex flex-shrink-0 items-center gap-1.5">
 
                 <a
                   href="mailto:contact@layercal.com"
-                  className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                    isDarkMode
-                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-gray-100'
-                      : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 shadow-sm'
-                  }`}
+                  className={iconButton}
                   aria-label="Contact us via email"
                   title="contact@layercal.com"
                 >
-                  <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <Mail className="h-4 w-4" />
                 </a>
 
                 <a
                   href="https://github.com/chanjoongx/layercal"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                    isDarkMode
-                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'
-                      : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 shadow-sm'
-                  }`}
+                  className={iconButton}
                   aria-label="View source on GitHub"
                   title="Star on GitHub"
                 >
-                  <GithubMark className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <GithubMark className="h-4 w-4" />
                 </a>
 
                 <button
                   onClick={handleDarkModeToggle}
-                  className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                    isDarkMode
-                      ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400'
-                      : 'bg-white hover:bg-gray-50 text-gray-700 shadow-sm'
-                  }`}
+                  className={iconButton}
                   aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
                 >
-                  {isDarkMode
-                    ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" />
-                    : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </button>
 
                 {/* 언어 버튼: md(768px)부터 국기+코드 텍스트 표시 */}
                 <div className="relative" ref={languageMenuRef}>
                   <button
                     onClick={() => setShowLanguageMenu(!showLanguageMenu)}
-                    className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 sm:py-2 rounded-lg transition-colors ${
-                      isDarkMode
-                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                        : 'bg-white hover:bg-gray-50 text-gray-700 shadow-sm'
-                    }`}
+                    className="press flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-2 text-muted-foreground shadow-sm hover:border-border-strong hover:text-foreground md:gap-2 md:px-3"
                     aria-label={`Current language: ${currentLanguageOption.name}. Click to change language`}
                     aria-expanded={showLanguageMenu}
                     aria-haspopup="true"
                   >
-                    <Globe className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span className="hidden md:inline text-sm font-medium">
+                    <Globe className="h-4 w-4" />
+                    <span className="hidden text-sm font-medium md:inline">
                       {currentLanguageOption.flag} {currentLanguageOption.code.toUpperCase()}
                     </span>
-                    <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <ChevronDown className="h-3 w-3" />
                   </button>
 
                   {showLanguageMenu && (
-                    <div className={`absolute right-0 mt-2 w-44 rounded-lg shadow-lg z-50 ${
-                      isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
-                    }`}>
+                    <div className="absolute right-0 z-50 mt-2 w-44 animate-slide-up overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
                       {LANGUAGE_OPTIONS.map(option => (
                         <button
                           key={option.code}
                           onClick={() => handleLanguageChange(option.code)}
                           lang={option.code}
                           aria-current={language === option.code ? 'true' : undefined}
-                          className={`w-full flex items-center gap-2 px-4 py-2 text-sm transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                          className={`flex w-full items-center gap-2 px-4 py-2 text-sm transition-colors ${
                             language === option.code
-                              ? (isDarkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-50 text-purple-700')
-                              : (isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50')
+                              ? 'bg-accent-soft text-accent'
+                              : 'text-foreground hover:bg-muted'
                           }`}
                         >
                           <span aria-hidden="true">{option.flag}</span>
                           <span className="flex-1 text-left">{option.name}</span>
                           {/* Colour alone must not be the only cue for the active item. */}
                           {language === option.code && (
-                            <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                            <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                           )}
                         </button>
                       ))}
@@ -532,130 +566,82 @@ export default function LayerCal() {
                 </div>
 
                 {/* ── 액션 버튼 3개: md부터 1행 합류, lg부터 텍스트 표시 ── */}
-                <div className="hidden md:flex items-center gap-1.5">
-                  <button
+                <div className="hidden items-center gap-1.5 md:flex">
+                  <ActionButton
                     onClick={() => setShowAdvisorModal(true)}
-                    className={`flex items-center gap-1.5 px-2 lg:px-3 py-2 rounded-lg transition-colors ${
-                      isDarkMode
-                        ? 'bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-700'
-                        : 'bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-300'
-                    }`}
-                    aria-label={t.aiAdvisor || 'AI Architecture Advisor'}
-                  >
-                    <Sparkles className="w-4 h-4 flex-shrink-0" />
-                    <span className="hidden lg:inline text-sm whitespace-nowrap">
-                      {t.aiAdvisor || 'AI Advisor'}
-                    </span>
-                  </button>
-
-                  <button
+                    icon={Sparkles}
+                    label={t.aiAdvisor || 'AI Advisor'}
+                    primary
+                  />
+                  <ActionButton
                     onClick={() => setShowCodeModal(true)}
-                    className={`flex items-center gap-1.5 px-2 lg:px-3 py-2 rounded-lg transition-colors ${
-                      isDarkMode
-                        ? 'bg-green-900/30 hover:bg-green-900/50 text-green-400 border border-green-700'
-                        : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
-                    }`}
-                    aria-label={t.exportCode || 'Export code'}
-                  >
-                    <Code className="w-4 h-4 flex-shrink-0" />
-                    <span className="hidden lg:inline text-sm whitespace-nowrap">
-                      {t.exportCode || 'Export Code'}
-                    </span>
-                  </button>
-
-                  <button
+                    icon={Code}
+                    label={t.exportCode || 'Export Code'}
+                  />
+                  <ActionButton
                     onClick={handleExportImageClick}
-                    className={`flex items-center gap-1.5 px-2 lg:px-3 py-2 rounded-lg transition-colors ${
-                      isDarkMode
-                        ? 'bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-700'
-                        : 'bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300'
-                    }`}
-                    aria-label={t.exportImage}
-                  >
-                    <Camera className="w-4 h-4 flex-shrink-0" />
-                    <span className="hidden lg:inline text-sm whitespace-nowrap">
-                      {t.exportImage}
-                    </span>
-                  </button>
+                    icon={Camera}
+                    label={t.exportImage}
+                  />
                 </div>
 
               </div>
             </div>
 
             {/* Row 2: 모바일 전용 액션 버튼 바 (md 이상에서 숨김) */}
-            <div className="flex md:hidden gap-2 mt-2 pt-2 border-t border-gray-400/20">
-              <button
+            <div className="mt-2 flex gap-2 border-t border-border pt-2 md:hidden">
+              <ActionButton
                 onClick={() => setShowAdvisorModal(true)}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg transition-colors text-xs font-medium min-w-0 ${
-                  isDarkMode
-                    ? 'bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-700'
-                    : 'bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-300'
-                }`}
-                aria-label={t.aiAdvisor || 'AI Architecture Advisor'}
-              >
-                <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
-                <span className="truncate">{t.aiAdvisor || 'AI Advisor'}</span>
-              </button>
-
-              <button
+                icon={Sparkles}
+                label={t.aiAdvisor || 'AI Advisor'}
+                primary
+                compact
+              />
+              <ActionButton
                 onClick={() => setShowCodeModal(true)}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg transition-colors text-xs font-medium min-w-0 ${
-                  isDarkMode
-                    ? 'bg-green-900/30 hover:bg-green-900/50 text-green-400 border border-green-700'
-                    : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
-                }`}
-                aria-label={t.exportCode || 'Export code'}
-              >
-                <Code className="w-3.5 h-3.5 flex-shrink-0" />
-                <span className="truncate">{t.exportCode || 'Export Code'}</span>
-              </button>
-
-              <button
+                icon={Code}
+                label={t.exportCode || 'Export Code'}
+                compact
+              />
+              <ActionButton
                 onClick={handleExportImageClick}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg transition-colors text-xs font-medium min-w-0 ${
-                  isDarkMode
-                    ? 'bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 border border-purple-700'
-                    : 'bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300'
-                }`}
-                aria-label={t.exportImage}
-              >
-                <Camera className="w-3.5 h-3.5 flex-shrink-0" />
-                <span className="truncate">{t.exportImage}</span>
-              </button>
+                icon={Camera}
+                label={t.exportImage}
+                compact
+              />
             </div>
 
           </div>
         </header>
 
         <main id="main-content" tabIndex={-1}>
-          {/* Info message */}
-          <Alert className={`mb-4 sm:mb-6 text-xs sm:text-sm ${
-            isDarkMode
-              ? 'bg-blue-900/30 border-blue-700 text-blue-300'
-              : 'bg-blue-50 border-blue-200'
-          }`}>
-            <Info className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-            <AlertDescription className={isDarkMode ? 'text-blue-300' : 'text-blue-800'}>
-              {t.alertMessage}
-            </AlertDescription>
-          </Alert>
+          <div ref={captureAreaRef} data-capture-area className="space-y-4 sm:space-y-5">
 
-          {/* Main content */}
-          <div ref={captureAreaRef} data-capture-area>
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
+            {/* Hero: the live 3D architecture */}
+            <ModelViewer
+              layers={modelLayers}
+              layerTypes={LAYER_TYPES}
+              issues={dimensionIssues}
+              isDarkMode={isDarkMode}
+              t={t}
+              selectedId={selectedLayerId}
+              onSelect={handleSelectFromCanvas}
+              onFocusLayer={focusLayerCard}
+              captureRef={captureRenderRef}
+            />
+
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-4">
               {/* Left: Layer palette */}
               <div className="lg:col-span-1">
-                <Card className={`border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <CardHeader>
-                    <CardTitle className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      <Layers className="w-5 h-5" />
+                <Card className="panel border-0">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                      <Layers className="h-4 w-4 text-accent" />
                       {t.layerPalette}
                     </CardTitle>
-                    <CardDescription className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
-                      {t.dragToAdd}
-                    </CardDescription>
+                    <CardDescription>{t.dragToAdd}</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-2 max-h-[60vh] lg:max-h-none overflow-y-auto">
+                  <CardContent className="scroll-slim max-h-[52vh] space-y-1.5 overflow-y-auto lg:max-h-none">
                     {Object.entries(LAYER_TYPES).map(([type, config]) => (
                       <div
                         key={type}
@@ -663,7 +649,8 @@ export default function LayerCal() {
                         onDragStart={(e) => handleDragStart(e, type)}
                         onDragEnd={handleDragEnd}
                         onClick={() => addLayer(type)}
-                        className={`p-2.5 sm:p-3 rounded-lg border cursor-move hover:cursor-pointer transition-all hover:shadow-md active:scale-95 ${config.color} ${
+                        style={paletteStyle(type, isDarkMode)}
+                        className={`layer-surface press cursor-grab rounded-md border p-2.5 active:cursor-grabbing ${
                           draggedType === type ? 'opacity-50' : ''
                         }`}
                         role="button"
@@ -675,13 +662,13 @@ export default function LayerCal() {
                           }
                         }}
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl sm:text-2xl" aria-hidden="true">{config.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className={`font-medium text-xs sm:text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <div className="flex items-center gap-2.5">
+                          <span className="layer-dot h-2.5 w-2.5 shrink-0 rounded-[3px]" aria-hidden="true" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold text-foreground sm:text-sm">
                               {config.name}
                             </div>
-                            <div className={`text-[11px] sm:text-xs truncate ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            <div className="truncate text-[11px] text-muted-foreground">
                               {config.description}
                             </div>
                           </div>
@@ -694,27 +681,21 @@ export default function LayerCal() {
 
               {/* Center: Model builder */}
               <div className="lg:col-span-2">
-                <Card className={`border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <CardHeader>
+                <Card className="panel border-0">
+                  <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <CardTitle className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                          {t.modelArchitecture}
-                        </CardTitle>
-                        <CardDescription className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
-                          {modelLayers.length} {t.layers} • {totalParams.toLocaleString()} {t.parameters}
+                        <CardTitle className="text-lg text-foreground">{t.modelArchitecture}</CardTitle>
+                        <CardDescription data-numeric>
+                          {modelLayers.length} {t.layers} · {totalParams.toLocaleString()} {t.parameters}
                         </CardDescription>
                       </div>
                       {modelLayers.length > 0 && (
                         <button
                           onClick={clearAllLayers}
-                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 ${
-                            isDarkMode
-                              ? 'bg-gray-700 hover:bg-red-900/40 text-gray-300 hover:text-red-300'
-                              : 'bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600'
-                          }`}
+                          className="press flex flex-shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:border-danger/40 hover:text-danger"
                         >
-                          <Eraser className="w-3.5 h-3.5" />
+                          <Eraser className="h-3.5 w-3.5" />
                           {t.clearAll || 'Clear all'}
                         </button>
                       )}
@@ -725,21 +706,17 @@ export default function LayerCal() {
                       onDragOver={handleDragOver}
                       onDrop={handleDrop}
                       id="model-drop-zone"
-                      className={`min-h-[400px] rounded-lg border-2 border-dashed p-4 transition-colors ${
+                      className={`scroll-slim min-h-[420px] rounded-lg border-2 border-dashed p-3 transition-colors ${
                         draggedType
-                          ? (isDarkMode ? 'border-purple-500 bg-purple-900/20' : 'border-purple-400 bg-purple-50')
-                          : (isDarkMode ? 'border-gray-600 bg-gray-900/50' : 'border-gray-300 bg-gray-50/50')
+                          ? 'dropzone-active border-accent'
+                          : 'border-border bg-muted/40'
                       }`}
                     >
                       {modelLayers.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center">
-                          <Plus className={`w-16 h-16 mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                          <p className={`text-lg font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                            {t.dropHere}
-                          </p>
-                          <p className={`text-sm mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {t.yourModel}
-                          </p>
+                        <div className="flex min-h-[380px] flex-col items-center justify-center text-center">
+                          <Layers className="mb-3 h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
+                          <p className="text-base font-medium text-foreground">{t.dropHere}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">{t.yourModel}</p>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -747,118 +724,105 @@ export default function LayerCal() {
                             const config = LAYER_TYPES[layer.type];
                             if (!config) return null;
                             const layerParams = safeCalculate(config, layer.params);
+                            const issue = dimensionIssues.get(index);
+                            const selected = selectedLayerId === layer.id;
 
                             return (
                               <div
                                 key={layer.id}
+                                ref={(el) => {
+                                  if (el) layerCardRefs.current.set(layer.id, el);
+                                  else layerCardRefs.current.delete(layer.id);
+                                }}
                                 draggable
                                 onDragStart={(e) => handleLayerDragStart(e, index)}
                                 onDragOver={(e) => handleLayerDragOver(e, index)}
                                 onDragEnd={handleLayerDragEnd}
-                                className={`p-3 sm:p-4 rounded-lg border ${config.color} ${
+                                onClick={() => handleSelectCard(layer.id)}
+                                style={paletteStyle(layer.type, isDarkMode)}
+                                className={`layer-surface enter-rise rounded-lg border p-3 transition-shadow sm:p-3.5 ${
                                   draggedIndex === index ? 'opacity-50' : ''
-                                }`}
+                                } ${selected ? 'shadow-md ring-2 ring-accent/70' : ''}`}
                               >
                                 <div className="flex items-start gap-2 sm:gap-3">
                                   {/* Reorder controls. Dragging is unavailable on
                                       touch and from the keyboard, so these are the
                                       only reachable way to change the order. */}
-                                  <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                                  <div className="flex flex-shrink-0 flex-col items-center pt-0.5">
                                     <button
                                       type="button"
-                                      onClick={() => moveLayer(index, -1)}
+                                      onClick={(e) => { e.stopPropagation(); moveLayer(index, -1); }}
                                       disabled={index === 0}
                                       aria-label={`${t.moveUp}: ${config.name}`}
-                                      className={`rounded p-0.5 transition-colors disabled:opacity-25 ${
-                                        isDarkMode
-                                          ? 'text-gray-400 hover:bg-gray-700/70 hover:text-gray-100'
-                                          : 'text-gray-500 hover:bg-white/70 hover:text-gray-900'
-                                      }`}
+                                      className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-surface hover:text-foreground disabled:opacity-25"
                                     >
-                                      <ChevronUp className="w-3.5 h-3.5" />
+                                      <ChevronUp className="h-3.5 w-3.5" />
                                     </button>
 
                                     <GripVertical
-                                      className={`w-4 h-4 cursor-move ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                                      className="h-4 w-4 cursor-move text-muted-foreground"
                                       aria-hidden="true"
                                     />
 
                                     <button
                                       type="button"
-                                      onClick={() => moveLayer(index, 1)}
+                                      onClick={(e) => { e.stopPropagation(); moveLayer(index, 1); }}
                                       disabled={index === modelLayers.length - 1}
                                       aria-label={`${t.moveDown}: ${config.name}`}
-                                      className={`rounded p-0.5 transition-colors disabled:opacity-25 ${
-                                        isDarkMode
-                                          ? 'text-gray-400 hover:bg-gray-700/70 hover:text-gray-100'
-                                          : 'text-gray-500 hover:bg-white/70 hover:text-gray-900'
-                                      }`}
+                                      className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-surface hover:text-foreground disabled:opacity-25"
                                     >
-                                      <ChevronDown className="w-3.5 h-3.5" />
+                                      <ChevronDown className="h-3.5 w-3.5" />
                                     </button>
                                   </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                                        <span className="text-lg sm:text-xl flex-shrink-0" aria-hidden="true">{config.icon}</span>
+
+                                  <div className="min-w-0 flex-1">
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                                        <span className="layer-dot h-3 w-3 shrink-0 rounded-[3px]" aria-hidden="true" />
                                         <div className="min-w-0">
-                                          <div className={`font-semibold text-sm sm:text-base truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                          <div className="truncate text-sm font-semibold text-foreground sm:text-base">
+                                            <span className="mr-1.5 font-mono text-xs text-muted-foreground">{index + 1}</span>
                                             {config.name}
                                           </div>
-                                          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                          <div className="text-xs text-muted-foreground" data-numeric>
                                             {layerParams.toLocaleString()} {t.parameters}
                                           </div>
                                         </div>
                                       </div>
                                       <button
-                                        onClick={() => deleteLayer(layer.id)}
-                                        className={`p-1.5 rounded transition-colors ${
-                                          isDarkMode
-                                            ? 'hover:bg-red-900/30 text-red-400'
-                                            : 'hover:bg-red-100 text-red-600'
-                                        }`}
+                                        onClick={(e) => { e.stopPropagation(); deleteLayer(layer.id); }}
+                                        className="press rounded p-1.5 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
                                         aria-label={`Delete ${config.name} layer ${index + 1}`}
                                       >
-                                        <Trash2 className="w-4 h-4" />
+                                        <Trash2 className="h-4 w-4" />
                                       </button>
                                     </div>
 
-                                    {/* Dimension mismatch against the preceding layer */}
-                                    {(() => {
-                                      const issue = dimensionIssues.get(index);
-                                      if (!issue) return null;
-                                      const field = config.fields.find(f => f.key === issue.field);
-                                      const text = (t.dimMismatch || 'Set {field} to {n} to match the previous layer')
-                                        .replace('{field}', field?.label || issue.field)
-                                        .replace('{n}', String(issue.expected));
-                                      return (
-                                        // Deliberately not a live region: it sits beside the field
-                                        // it describes, and one announcement per keystroke per
-                                        // mismatched layer would drown out everything else.
-                                        <p
-                                          className={`mt-2 flex items-start gap-1.5 rounded px-2 py-1 text-[11px] leading-snug ${
-                                            isDarkMode
-                                              ? 'bg-amber-950/60 text-amber-200'
-                                              : 'bg-amber-100 text-amber-900'
-                                          }`}
-                                        >
-                                          <TriangleAlert className="w-3 h-3 mt-0.5 shrink-0" aria-hidden="true" />
-                                          <span>{text}</span>
-                                        </p>
-                                      );
-                                    })()}
+                                    {/* Dimension mismatch against the preceding layer.
+                                        Deliberately not a live region: it sits beside the
+                                        field it describes, and one announcement per
+                                        keystroke per mismatched layer would drown out
+                                        everything else. */}
+                                    {issue && (
+                                      <p className="mt-2 flex items-start gap-1.5 rounded px-2 py-1 text-[11px] leading-snug text-warning ring-1 ring-inset ring-warning/40">
+                                        <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                                        <span>
+                                          {(t.dimMismatch || 'Set {field} to {n} to match the previous layer')
+                                            .replace('{field}', config.fields.find(f => f.key === issue.field)?.label || issue.field)
+                                            .replace('{n}', String(issue.expected))}
+                                        </span>
+                                      </p>
+                                    )}
 
                                     {/* Parameter controls */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                                       {config.fields.map((field) => {
                                         const inputId = `${layer.id}-${field.key}`;
                                         return (
                                           <div key={field.key} className="space-y-1">
                                             <label
                                               htmlFor={inputId}
-                                              className={`text-xs font-medium block ${
-                                                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                                              }`}
+                                              className="block text-xs font-medium text-muted-foreground"
                                             >
                                               {field.label}
                                             </label>
@@ -866,25 +830,23 @@ export default function LayerCal() {
                                               <select
                                                 id={inputId}
                                                 value={layer.params[field.key]}
+                                                onClick={(e) => e.stopPropagation()}
                                                 onChange={(e) => updateLayerParam(layer.id, field, Number(e.target.value))}
-                                                className={`w-full px-3 py-2 text-sm border rounded-lg ${
-                                                  isDarkMode
-                                                    ? 'bg-gray-700 border-gray-600 text-white'
-                                                    : 'border-gray-300 bg-white'
-                                                }`}
+                                                className={fieldClass}
                                               >
                                                 {field.options.map(opt => (
                                                   <option key={opt} value={opt}>{opt}</option>
                                                 ))}
                                               </select>
                                             ) : field.type === 'checkbox' ? (
-                                              <div className="flex items-center h-10">
+                                              <div className="flex h-10 items-center">
                                                 <input
                                                   id={inputId}
                                                   type="checkbox"
                                                   checked={!!layer.params[field.key]}
+                                                  onClick={(e) => e.stopPropagation()}
                                                   onChange={(e) => updateLayerParam(layer.id, field, e.target.checked)}
-                                                  className="w-5 h-5"
+                                                  className="h-5 w-5 accent-[hsl(var(--accent))]"
                                                 />
                                               </div>
                                             ) : (
@@ -892,17 +854,14 @@ export default function LayerCal() {
                                                 id={inputId}
                                                 type="number"
                                                 value={layer.params[field.key]}
+                                                onClick={(e) => e.stopPropagation()}
                                                 onChange={(e) => updateLayerParam(layer.id, field, e.target.value)}
                                                 onBlur={() => normalizeLayerParam(layer.id, field)}
                                                 step={field.step || 1}
                                                 min={field.min}
                                                 max={field.max}
                                                 inputMode={field.step && field.step < 1 ? 'decimal' : 'numeric'}
-                                                className={`w-full px-3 py-2 text-sm border rounded-lg ${
-                                                  isDarkMode
-                                                    ? 'bg-gray-700 border-gray-600 text-white'
-                                                    : 'border-gray-300 bg-white'
-                                                }`}
+                                                className={fieldClass}
                                               />
                                             )}
                                           </div>
@@ -923,77 +882,56 @@ export default function LayerCal() {
 
               {/* Right: Calculation results */}
               <div className="col-span-1">
-                <Card className={`md:sticky md:top-8 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <CardHeader>
-                    <CardTitle className={isDarkMode ? 'text-white' : 'text-gray-900'}>{t.modelSummary}</CardTitle>
+                <Card className="panel border-0 lg:sticky lg:top-5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg text-foreground">{t.modelSummary}</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3 sm:space-y-4">
-                    {/* Total Parameters */}
-                    <div className={`rounded-lg p-3 sm:p-4 border ${
-                      isDarkMode ? 'bg-purple-900/30 border-purple-700' : 'bg-purple-50 border-purple-200'
-                    }`}>
-                      <p className={`text-xs sm:text-sm mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{t.totalParameters}</p>
-                      <p className={`text-2xl sm:text-3xl font-bold ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                        {totalParams.toLocaleString()}
-                      </p>
-                    </div>
+                  <CardContent className="space-y-3">
+                    <Metric
+                      label={t.totalParameters}
+                      value={Math.round(animatedParams).toLocaleString()}
+                      accent="hsl(var(--accent))"
+                      large
+                    />
 
-                    {/* Model Size */}
-                    <div className={`rounded-lg p-3 sm:p-4 border ${
-                      isDarkMode ? 'bg-blue-900/30 border-blue-700' : 'bg-blue-50 border-blue-200'
-                    }`}>
-                      <p className={`text-xs sm:text-sm mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{t.modelSize}</p>
-                      <p className={`text-xl sm:text-2xl font-bold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                        {formatBytes(modelSizeBytes)}
-                      </p>
-                    </div>
+                    <Metric
+                      label={t.modelSize}
+                      value={formatBytes(animatedSize)}
+                      accent={accentFor('linear')}
+                    />
 
-                    {/* Total FLOPs */}
-                    <div className={`rounded-lg p-3 sm:p-4 border ${
-                      isDarkMode ? 'bg-orange-900/30 border-orange-700' : 'bg-orange-50 border-orange-200'
-                    }`}>
-                      <p className={`text-xs sm:text-sm mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{t.totalFLOPs || 'Total FLOPs'}</p>
-                      <p className={`text-xl sm:text-2xl font-bold ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-                        {formatNumber(totalFLOPs)}
-                      </p>
-                      <p className={`mt-1.5 text-[11px] leading-snug ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {t.flopsNote}
-                      </p>
-                    </div>
+                    <Metric
+                      label={t.totalFLOPs || 'Total FLOPs'}
+                      value={formatNumber(animatedFlops)}
+                      accent={accentFor('lstm')}
+                      note={t.flopsNote}
+                    />
 
-                    {/* Memory Estimation */}
-                    <div className={`rounded-lg p-3 sm:p-4 border ${
-                      isDarkMode ? 'bg-cyan-900/30 border-cyan-700' : 'bg-cyan-50 border-cyan-200'
-                    }`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{t.memoryEstimation || 'Memory'}</p>
+                    {/* Memory */}
+                    <div className="metric p-3 pl-4" style={{ '--metric-accent': accentFor('batchnorm') }}>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs text-muted-foreground">{t.memoryEstimation || 'Memory'}</p>
                         <div className="flex gap-1" role="group" aria-label={t.memoryEstimation || 'Memory mode'}>
-                          <button
-                            onClick={() => setMemoryMode('inference')}
-                            aria-pressed={memoryMode === 'inference'}
-                            className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                              memoryMode === 'inference'
-                                ? (isDarkMode ? 'bg-cyan-700 text-white' : 'bg-cyan-600 text-white')
-                                : (isDarkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-600')
-                            }`}
-                          >
-                            {t.inferenceMode || 'Inference'}
-                          </button>
-                          <button
-                            onClick={() => setMemoryMode('training')}
-                            aria-pressed={memoryMode === 'training'}
-                            className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                              memoryMode === 'training'
-                                ? (isDarkMode ? 'bg-cyan-700 text-white' : 'bg-cyan-600 text-white')
-                                : (isDarkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-600')
-                            }`}
-                          >
-                            {t.trainingMode || 'Training'}
-                          </button>
+                          {['inference', 'training'].map(mode => (
+                            <button
+                              key={mode}
+                              onClick={() => setMemoryMode(mode)}
+                              aria-pressed={memoryMode === mode}
+                              className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                                memoryMode === mode
+                                  ? 'bg-accent text-primary-foreground'
+                                  : 'bg-muted text-muted-foreground hover:text-foreground'
+                              }`}
+                            >
+                              {mode === 'inference'
+                                ? (t.inferenceMode || 'Inference')
+                                : (t.trainingMode || 'Training')}
+                            </button>
+                          ))}
                         </div>
                       </div>
-                      <p className={`text-xl sm:text-2xl font-bold ${isDarkMode ? 'text-cyan-400' : 'text-cyan-600'}`}>
-                        {formatBytes(memoryEstimate)}
+                      <p className="text-xl font-bold text-foreground sm:text-2xl" data-numeric>
+                        {formatBytes(animatedMemory)}
                       </p>
                       <label htmlFor="precision-select" className="sr-only">{t.precision || 'Precision'}</label>
                       <select
@@ -1001,57 +939,64 @@ export default function LayerCal() {
                         value={precision}
                         onChange={(e) => setPrecision(e.target.value)}
                         disabled={memoryMode === 'training'}
-                        className={`mt-2 w-full px-2 py-1 text-xs rounded border disabled:opacity-50 ${
-                          isDarkMode
-                            ? 'bg-gray-700 border-gray-600 text-gray-200'
-                            : 'bg-white border-gray-300 text-gray-700'
-                        }`}
+                        className="mt-2 w-full rounded border border-input bg-surface px-2 py-1 text-xs text-foreground disabled:opacity-50"
                       >
                         <option value="fp32">{t.fp32 || 'FP32 (32-bit)'}</option>
                         <option value="fp16">{t.fp16 || 'FP16 (16-bit)'}</option>
                         <option value="bf16">{t.bf16 || 'BF16 (16-bit)'}</option>
                         <option value="int8">{t.int8 || 'INT8 (8-bit)'}</option>
                       </select>
-                      <p className={`mt-1.5 text-[11px] leading-snug ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
                         {memoryMode === 'training' ? t.memoryNoteTraining : t.memoryNoteInference}
                       </p>
                     </div>
 
-                    {/* Number of Layers */}
-                    <div className={`rounded-lg p-3 sm:p-4 border ${
-                      isDarkMode ? 'bg-green-900/30 border-green-700' : 'bg-green-50 border-green-200'
-                    }`}>
-                      <p className={`text-xs sm:text-sm mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{t.numberOfLayers}</p>
-                      <p className={`text-xl sm:text-2xl font-bold ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>
-                        {modelLayers.length}
-                      </p>
-                    </div>
+                    <Metric
+                      label={t.numberOfLayers}
+                      value={String(modelLayers.length)}
+                      accent="hsl(var(--positive))"
+                    />
 
                     {modelLayers.length > 0 && (
-                      <div className={`border-t pt-4 ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                        <p className={`text-sm font-semibold mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t.layerDistribution}</p>
+                      <div className="border-t border-border pt-4">
+                        <p className="mb-2 text-sm font-semibold text-foreground">{t.layerDistribution}</p>
                         <div className="space-y-2">
                           {modelLayers.map((layer, idx) => {
                             const config = LAYER_TYPES[layer.type];
                             if (!config) return null;
                             const layerParams = safeCalculate(config, layer.params);
-                            const percentage = totalParams > 0 ? ((layerParams / totalParams) * 100).toFixed(1) : '0.0';
+                            const percentage = totalParams > 0 ? (layerParams / totalParams) * 100 : 0;
+                            const paint = paintFor(layer.type);
 
                             return (
-                              <div key={layer.id} className="text-xs">
-                                <div className="flex justify-between mb-1">
-                                  <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
-                                    <span aria-hidden="true">{config.icon}</span> {t.layer} {idx + 1}
+                              <button
+                                key={layer.id}
+                                onClick={() => handleSelectCard(layer.id)}
+                                className="block w-full text-left text-xs"
+                              >
+                                <div className="mb-1 flex justify-between">
+                                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                                    <span
+                                      className="h-2 w-2 rounded-[2px]"
+                                      style={{ background: isDarkMode ? paint.hexDark : paint.hex }}
+                                      aria-hidden="true"
+                                    />
+                                    {t.layer} {idx + 1}
                                   </span>
-                                  <span className={`font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{percentage}%</span>
+                                  <span className="font-medium text-foreground" data-numeric>
+                                    {percentage.toFixed(1)}%
+                                  </span>
                                 </div>
-                                <div className={`w-full rounded-full h-2 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                <div className="h-1.5 w-full rounded-full bg-muted">
                                   <div
-                                    className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full transition-all"
-                                    style={{ width: `${percentage}%` }}
+                                    className="h-1.5 rounded-full transition-[width] duration-slow ease-out"
+                                    style={{
+                                      width: `${percentage}%`,
+                                      background: isDarkMode ? paint.hexDark : paint.hex,
+                                    }}
                                   />
                                 </div>
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
@@ -1062,6 +1007,12 @@ export default function LayerCal() {
               </div>
             </div>
           </div>
+
+          {/* Info message */}
+          <Alert className="mt-4 border-border bg-surface/70 text-xs text-muted-foreground sm:mt-5 sm:text-sm">
+            <Info className="h-4 w-4 text-accent" />
+            <AlertDescription>{t.alertMessage}</AlertDescription>
+          </Alert>
         </main>
 
         {/* Donation modal */}
@@ -1075,19 +1026,17 @@ export default function LayerCal() {
             <>
               <button
                 onClick={() => setShowDonationModal(false)}
-                className={`absolute top-3 right-3 sm:top-4 sm:right-4 transition-colors ${
-                  isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
-                }`}
+                className="absolute right-3 top-3 text-muted-foreground transition-colors hover:text-foreground sm:right-4 sm:top-4"
                 aria-label={t.closeModal || 'Close'}
               >
-                <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                <X className="h-5 w-5 sm:h-6 sm:w-6" />
               </button>
 
-              <div className="text-center mb-5 sm:mb-6">
-                <h2 id="donation-title" className={`text-xl sm:text-2xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              <div className="mb-5 text-center sm:mb-6">
+                <h2 id="donation-title" className="mb-2 text-xl font-bold text-foreground sm:text-2xl">
                   {t.enjoyingLayerCal}
                 </h2>
-                <p className={`text-sm sm:text-base ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                <p className="text-sm text-muted-foreground sm:text-base">
                   {t.supportMessage}
                 </p>
               </div>
@@ -1097,18 +1046,14 @@ export default function LayerCal() {
                   href="https://buymeacoffee.com/layercal"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block w-full px-5 sm:px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg text-center text-sm sm:text-base active:scale-95"
+                  className="press block w-full rounded-lg bg-gradient-to-r from-amber-400 to-orange-400 px-5 py-3 text-center text-sm font-semibold text-white shadow-md hover:shadow-lg sm:px-6 sm:text-base"
                 >
                   {t.buyMeCoffee}
                 </a>
 
                 <button
                   onClick={handleExportImage}
-                  className={`block w-full px-5 sm:px-6 py-3 font-semibold rounded-lg transition-all text-center text-sm sm:text-base active:scale-95 ${
-                    isDarkMode
-                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                      : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-                  }`}
+                  className="press block w-full rounded-lg bg-muted px-5 py-3 text-center text-sm font-semibold text-foreground hover:bg-border sm:px-6 sm:text-base"
                 >
                   {t.noThanksDownload}
                 </button>
@@ -1123,36 +1068,30 @@ export default function LayerCal() {
             isDarkMode={isDarkMode}
             labelledBy="code-modal-title"
             onClose={() => setShowCodeModal(false)}
-            className="w-full max-w-2xl max-h-[80vh] flex flex-col"
+            className="flex max-h-[80vh] w-full max-w-2xl flex-col"
           >
             <>
               {/* Header */}
-              <div className={`flex items-center justify-between p-4 border-b ${
-                isDarkMode ? 'border-gray-700' : 'border-gray-200'
-              }`}>
+              <div className="flex items-center justify-between border-b border-border p-4">
                 <div>
-                  <h2 id="code-modal-title" className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  <h2 id="code-modal-title" className="text-lg font-bold text-foreground">
                     {t.codeExportTitle || 'Export Code'}
                   </h2>
-                  <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <p className="text-sm text-muted-foreground">
                     {t.codeExportDesc || 'Copy the generated code for your framework'}
                   </p>
                 </div>
                 <button
                   onClick={() => setShowCodeModal(false)}
                   aria-label={t.closeModal || 'Close'}
-                  className={`p-2 rounded-lg transition-colors ${
-                    isDarkMode
-                      ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
-                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                  }`}
+                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
               {/* Framework tabs */}
-              <div className={`flex border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`} role="tablist">
+              <div className="flex border-b border-border" role="tablist">
                 {['pytorch', 'tensorflow', 'jax'].map((fw) => (
                   <button
                     key={fw}
@@ -1161,12 +1100,8 @@ export default function LayerCal() {
                     onClick={() => setSelectedFramework(fw)}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${
                       selectedFramework === fw
-                        ? (isDarkMode
-                            ? 'text-green-400 border-b-2 border-green-400'
-                            : 'text-green-600 border-b-2 border-green-600')
-                        : (isDarkMode
-                            ? 'text-gray-400 hover:text-gray-200'
-                            : 'text-gray-600 hover:text-gray-900')
+                        ? 'border-b-2 border-accent text-accent'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     {fw === 'pytorch' ? 'PyTorch' : fw === 'tensorflow' ? 'TensorFlow' : 'JAX'}
@@ -1175,39 +1110,33 @@ export default function LayerCal() {
               </div>
 
               {/* Code display */}
-              <div className="flex-1 overflow-auto p-4">
-                <pre className={`text-xs sm:text-sm p-4 rounded-lg overflow-x-auto ${
-                  isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-50 text-gray-800'
-                }`}>
+              <div className="scroll-slim flex-1 overflow-auto p-4">
+                <pre className="overflow-x-auto rounded-lg bg-muted p-4 font-mono text-xs text-foreground sm:text-sm">
                   <code>{generatedCode}</code>
                 </pre>
               </div>
 
               {/* Buttons with donation */}
-              <div className={`p-4 border-t space-y-3 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                <div className="text-center mb-2">
-                  <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {t.supportMessage}
-                  </p>
-                </div>
+              <div className="space-y-3 border-t border-border p-4">
+                <p className="text-center text-sm text-muted-foreground">
+                  {t.supportMessage}
+                </p>
 
                 <a
                   href="https://buymeacoffee.com/layercal"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block w-full px-5 py-3 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg text-center text-sm active:scale-95"
+                  className="press block w-full rounded-lg bg-gradient-to-r from-amber-400 to-orange-400 px-5 py-3 text-center text-sm font-semibold text-white shadow-md hover:shadow-lg"
                 >
                   {t.buyMeCoffee}
                 </a>
 
                 <button
                   onClick={handleCopyCode}
-                  className={`w-full py-3 rounded-lg font-semibold transition-all text-sm ${
+                  className={`press w-full rounded-lg py-3 text-sm font-semibold transition-all ${
                     codeCopied
-                      ? (isDarkMode ? 'bg-green-700 text-white' : 'bg-green-500 text-white')
-                      : (isDarkMode
-                          ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                          : 'bg-gray-200 hover:bg-gray-300 text-gray-800')
+                      ? 'bg-positive text-white'
+                      : 'bg-muted text-foreground hover:bg-border'
                   }`}
                 >
                   {codeCopied ? (t.codeCopied || 'Copied!') : (t.copyCode || 'Copy Code')}
@@ -1222,6 +1151,7 @@ export default function LayerCal() {
           <AIAdvisor
             isDarkMode={isDarkMode}
             t={t}
+            layerTypes={LAYER_TYPES}
             canvasHasLayers={modelLayers.length > 0}
             onApply={addLayersFromAdvisor}
             onClose={() => setShowAdvisorModal(false)}
@@ -1233,23 +1163,15 @@ export default function LayerCal() {
           <div
             role="status"
             aria-live="polite"
-            className="fixed inset-x-0 bottom-4 z-[60] flex justify-center px-4 pointer-events-none"
+            className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex justify-center px-4"
           >
-            <div className={`pointer-events-auto flex items-center gap-3 max-w-md rounded-lg px-4 py-3 text-sm shadow-lg border ${
-              isDarkMode
-                ? 'bg-gray-800 border-gray-700 text-gray-100'
-                : 'bg-white border-gray-200 text-gray-800'
-            }`}>
+            <div className="pointer-events-auto flex max-w-md animate-slide-up items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-lg">
               <span className="flex-1">{toast.message}</span>
 
               {toast.action && (
                 <button
                   onClick={() => { toast.action.onClick(); setToast(null); }}
-                  className={`font-semibold whitespace-nowrap rounded px-2 py-1 transition-colors ${
-                    isDarkMode
-                      ? 'text-purple-300 hover:bg-purple-900/40'
-                      : 'text-purple-700 hover:bg-purple-50'
-                  }`}
+                  className="whitespace-nowrap rounded px-2 py-1 font-semibold text-accent transition-colors hover:bg-accent-soft"
                 >
                   {toast.action.label}
                 </button>
@@ -1258,16 +1180,16 @@ export default function LayerCal() {
               <button
                 onClick={() => setToast(null)}
                 aria-label={t.closeModal || 'Close'}
-                className={isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}
+                className="text-muted-foreground hover:text-foreground"
               >
-                <X className="w-4 h-4" />
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
         )}
 
         {/* Footer */}
-        <footer className={`mt-6 sm:mt-8 text-center text-xs space-y-1.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        <footer className="mt-6 space-y-1.5 text-center text-xs text-muted-foreground sm:mt-8">
           <p>{t.calculationNote}</p>
           <p>
             © {copyrightYears()} LayerCal
@@ -1285,6 +1207,53 @@ export default function LayerCal() {
           </p>
         </footer>
       </div>
+    </div>
+  );
+}
+
+/** Header action: icon-only from md, icon plus label from lg. */
+function ActionButton({ onClick, icon: Icon, label, primary, compact }) {
+  const base = primary
+    ? 'border-accent/40 bg-accent-soft text-accent hover:bg-accent hover:text-primary-foreground'
+    : 'border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground';
+
+  if (compact) {
+    return (
+      <button
+        onClick={onClick}
+        aria-label={label}
+        className={`press flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium ${base}`}
+      >
+        <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+        <span className="truncate">{label}</span>
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      className={`press flex items-center gap-1.5 rounded-lg border px-2 py-2 shadow-sm lg:px-3 ${base}`}
+    >
+      <Icon className="h-4 w-4 flex-shrink-0" />
+      <span className="hidden whitespace-nowrap text-sm lg:inline">{label}</span>
+    </button>
+  );
+}
+
+/** One readout in the summary column. */
+function Metric({ label, value, accent, note, large }) {
+  return (
+    <div className="metric p-3 pl-4" style={{ '--metric-accent': accent }}>
+      <p className="mb-1 text-xs text-muted-foreground">{label}</p>
+      <p
+        className={`font-bold text-foreground ${large ? 'text-2xl sm:text-3xl' : 'text-xl sm:text-2xl'}`}
+        data-numeric
+      >
+        {value}
+      </p>
+      {note && <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">{note}</p>}
     </div>
   );
 }

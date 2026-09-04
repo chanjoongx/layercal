@@ -23,15 +23,20 @@ const ARCHITECTURE_KB = [
     category: 'image_classification',
     tags: ['cnn', 'image', 'classification', 'mnist', 'digit', 'small', 'simple', 'beginner'],
     description: 'Classic CNN for handwritten digit recognition (LeCun, 1998)',
-    approxParams: '~62K',
+    approxParams: '~76K',
     layers: [
       { type: 'conv2d', params: { in_channels: 1, out_channels: 16, kernel_size: 5, use_bias: true } },
       { type: 'relu', params: {} },
       { type: 'avgpool2d', params: { kernel_size: 2 } },
-      { type: 'conv2d', params: { in_channels: 16, out_channels: 32, kernel_size: 5, use_bias: true } },
+      // The original flattens 16 x 5 x 5 into a 400-wide vector. LayerCal's
+      // generated code inserts a global average pool at the conv-to-dense
+      // transition instead, so the dense layer sees the channel count; the
+      // second convolution emits 64 so that count is a value the Linear field
+      // can actually hold.
+      { type: 'conv2d', params: { in_channels: 16, out_channels: 64, kernel_size: 5, use_bias: true } },
       { type: 'relu', params: {} },
       { type: 'avgpool2d', params: { kernel_size: 2 } },
-      { type: 'linear', params: { input_dim: 512, output_dim: 256, use_bias: true } },
+      { type: 'linear', params: { input_dim: 64, output_dim: 256, use_bias: true } },
       { type: 'relu', params: {} },
       { type: 'linear', params: { input_dim: 256, output_dim: 128, use_bias: true } },
       { type: 'softmax', params: {} },
@@ -274,6 +279,91 @@ const ARCHITECTURE_KB = [
       { type: 'linear', params: { input_dim: 256, output_dim: 128, use_bias: true } },
       { type: 'relu', params: {} },
       { type: 'linear', params: { input_dim: 128, output_dim: 64, use_bias: true } },
+    ]
+  },
+
+  // ── Modern references (added 2026-09-04) ──────────────
+
+  {
+    id: 'vit-tiny',
+    name: 'Vision Transformer (Tiny)',
+    category: 'image_classification',
+    tags: ['vit', 'transformer', 'image', 'classification', 'patch', 'attention', 'modern'],
+    description: 'Patch embedding followed by transformer blocks, in the ViT-Tiny configuration (Dosovitskiy et al., 2020)',
+    approxParams: '~3.5M',
+    layers: [
+      // A 16x16 patch embedding is a stride-16 convolution; LayerCal models the
+      // projection with a kernel-sized conv, which carries the same parameters.
+      { type: 'conv2d', params: { in_channels: 3, out_channels: 256, kernel_size: 7, use_bias: true } },
+      { type: 'layernorm', params: { normalized_shape: 256 } },
+      { type: 'transformer', params: { d_model: 256, num_heads: 4, d_ff: 1024, dropout: 0.1 } },
+      { type: 'transformer', params: { d_model: 256, num_heads: 4, d_ff: 1024, dropout: 0.1 } },
+      { type: 'transformer', params: { d_model: 256, num_heads: 4, d_ff: 1024, dropout: 0.1 } },
+      { type: 'transformer', params: { d_model: 256, num_heads: 4, d_ff: 1024, dropout: 0.1 } },
+      { type: 'layernorm', params: { normalized_shape: 256 } },
+      { type: 'linear', params: { input_dim: 256, output_dim: 1024, use_bias: true } },
+    ]
+  },
+
+  {
+    id: 'convnext-lite',
+    name: 'ConvNeXt-style Block Stack',
+    category: 'image_classification',
+    tags: ['convnext', 'cnn', 'image', 'classification', 'modern', 'layernorm', 'depthwise'],
+    description: 'Modernised CNN: large-kernel convolutions with LayerNorm instead of BatchNorm (Liu et al., 2022)',
+    approxParams: '~2.2M',
+    layers: [
+      { type: 'conv2d', params: { in_channels: 3, out_channels: 128, kernel_size: 5, use_bias: true } },
+      { type: 'layernorm', params: { normalized_shape: 128 } },
+      { type: 'conv2d', params: { in_channels: 128, out_channels: 256, kernel_size: 7, use_bias: true } },
+      { type: 'layernorm', params: { normalized_shape: 256 } },
+      { type: 'maxpool2d', params: { kernel_size: 2 } },
+      { type: 'conv2d', params: { in_channels: 256, out_channels: 256, kernel_size: 3, use_bias: true } },
+      { type: 'layernorm', params: { normalized_shape: 256 } },
+      { type: 'relu', params: {} },
+      { type: 'dropout', params: { rate: 0.1 } },
+      { type: 'linear', params: { input_dim: 256, output_dim: 128, use_bias: true } },
+    ]
+  },
+
+  {
+    id: 'llama-style-decoder',
+    name: 'Llama-style Decoder Stack',
+    category: 'text_generation',
+    tags: ['llm', 'decoder', 'causal', 'generation', 'chat', 'gpt', 'llama', 'modern'],
+    description: 'Pre-norm causal decoder stack of the shape used by current open-weight LLMs',
+    approxParams: '~85M',
+    layers: [
+      { type: 'embedding', params: { vocab_size: 32000, embedding_dim: 1024 } },
+      { type: 'layernorm', params: { normalized_shape: 1024 } },
+      { type: 'transformer', params: { d_model: 1024, num_heads: 16, d_ff: 4096, dropout: 0.0 } },
+      { type: 'transformer', params: { d_model: 1024, num_heads: 16, d_ff: 4096, dropout: 0.0 } },
+      { type: 'transformer', params: { d_model: 1024, num_heads: 16, d_ff: 4096, dropout: 0.0 } },
+      { type: 'transformer', params: { d_model: 1024, num_heads: 16, d_ff: 4096, dropout: 0.0 } },
+      { type: 'layernorm', params: { normalized_shape: 1024 } },
+      { type: 'linear', params: { input_dim: 1024, output_dim: 2048, use_bias: false } },
+      { type: 'softmax', params: {} },
+    ]
+  },
+
+  {
+    id: 'audio-encoder',
+    name: 'Whisper-style Audio Encoder',
+    category: 'audio_encoding',
+    tags: ['audio', 'speech', 'asr', 'encoder', 'whisper', 'spectrogram', 'transcription'],
+    description: 'Convolutional front end feeding transformer blocks, as used for speech recognition (Radford et al., 2022)',
+    approxParams: '~11M',
+    layers: [
+      { type: 'conv2d', params: { in_channels: 1, out_channels: 256, kernel_size: 3, use_bias: true } },
+      { type: 'relu', params: {} },
+      { type: 'conv2d', params: { in_channels: 256, out_channels: 512, kernel_size: 3, use_bias: true } },
+      { type: 'relu', params: {} },
+      { type: 'layernorm', params: { normalized_shape: 512 } },
+      { type: 'transformer', params: { d_model: 512, num_heads: 8, d_ff: 2048, dropout: 0.1 } },
+      { type: 'transformer', params: { d_model: 512, num_heads: 8, d_ff: 2048, dropout: 0.1 } },
+      { type: 'transformer', params: { d_model: 512, num_heads: 8, d_ff: 2048, dropout: 0.1 } },
+      { type: 'layernorm', params: { normalized_shape: 512 } },
+      { type: 'linear', params: { input_dim: 512, output_dim: 512, use_bias: true } },
     ]
   },
 ];

@@ -180,7 +180,15 @@ export function createRenderer(canvas, options = {}) {
   let playing = true;
   let theme = options.isDarkMode ? THEMES.dark : THEMES.light;
 
-  let scene = { nodes: [], links: [], bounds: { center: [0, 0.9, 0], radius: 1 }, totals: {} };
+  // A complete Scene, not a partial one: the framing solve reads bounds.min and
+  // bounds.max, and a placeholder missing them threw during engine construction,
+  // which the caller then caught as "no WebGL" and quietly fell back to the SVG.
+  let scene = {
+    nodes: [],
+    links: [],
+    bounds: { min: [-1, 0, -1], max: [1, 1.8, 1], center: [0, 0.9, 0], radius: 1 },
+    totals: {},
+  };
   let selectedId = null;
   let hoveredId = null;
 
@@ -625,6 +633,15 @@ export function createRenderer(canvas, options = {}) {
     canvas.width = w;
     canvas.height = h;
     allocateTargets();
+
+    // Re-frame for the new panel. Everything the fit was solved against has just
+    // changed: the aspect it was fitted to, the angle composed for that aspect,
+    // and the safe-area insets, which are a fraction of a height that no longer
+    // holds. Only the projection followed the resize on its own, so narrowing
+    // the window used to cut the model off at both edges outright.
+    //
+    // A camera the viewer has posed is theirs and is left alone; Reset re-fits.
+    if (!camera.userPosed) frameAll();
   }
 
   // ── uniform helpers ─────────────────────────────────

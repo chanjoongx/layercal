@@ -1061,7 +1061,7 @@ export function createRenderer(canvas, options = {}) {
     dolly(camera, Math.exp(event.deltaY * 0.0012));
   };
 
-  const onDoubleClick = () => frameAll();
+  const onDoubleClick = () => frameAll(true);
   const onPointerEnter = () => { pointerInside = true; };
   const onPointerLeave = () => {
     pointerInside = false;
@@ -1082,7 +1082,7 @@ export function createRenderer(canvas, options = {}) {
       case 'ArrowDown': orbit(camera, 0, step); break;
       case '+': case '=': dolly(camera, 0.88); break;
       case '-': case '_': dolly(camera, 1.14); break;
-      case 'Home': frameAll(); break;
+      case 'Home': frameAll(true); break;
       default: return;
     }
     hasInteracted = true;
@@ -1201,9 +1201,30 @@ export function createRenderer(canvas, options = {}) {
     raf = 0;
   }
 
-  function frameAll() {
-    frameBounds(camera, scene.bounds, aspect());
+  /**
+   * Re-frame the model.
+   *
+   * `recompose` hands the orbit angle back to the framing solve. An automatic
+   * re-frame after a layer is added must not do that - it would take an angle
+   * the viewer chose - but an explicit reset is exactly a request for the
+   * default composition again.
+   */
+  function frameAll(recompose = false) {
+    if (recompose) camera.userPosed = false;
+    frameBounds(camera, scene.bounds, aspect(), safeInsets());
     camera.idleFor = 0;
+  }
+
+  /**
+   * The parts of the panel the overlay already occupies, as fractions of its
+   * height: the metric chips plus a layer label's headroom at the top, the
+   * family legend at the bottom. Measured in pixels because the chrome is a
+   * fixed size while the panel is not - on a phone it is a fifth of the height
+   * and on a desktop less than a tenth.
+   */
+  function safeInsets() {
+    const height = Math.max(canvas.clientHeight || 0, 1);
+    return { top: 64 / height, bottom: 46 / height };
   }
 
   // ── public surface ──────────────────────────────────

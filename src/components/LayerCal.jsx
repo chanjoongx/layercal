@@ -473,7 +473,12 @@ export default function LayerCal() {
           │ 1024px~ (desktop/lg) : 1행, 액션 버튼에 텍스트까지           │
           └──────────────────────────────────────────────────────────────┘
         */}
-        <header className="mb-4 sm:mb-5">
+        {/* Raised deliberately. `.panel` uses backdrop-filter, which makes every
+            panel a stacking context, so a popover inside one cannot escape it with
+            z-index alone - the language menu was being painted over by the 3D
+            canvas below. The layers are: content (auto) < header (30) < modals
+            (50) < toast (60). */}
+        <header className="relative z-30 mb-4 sm:mb-5">
           <div className="panel px-3 py-2.5 sm:px-4">
 
             {/* Row 1: 항상 표시 */}
@@ -608,12 +613,14 @@ export default function LayerCal() {
                 icon={Code}
                 label={t.exportCode || 'Export Code'}
                 compact
+                iconOnly
               />
               <ActionButton
                 onClick={handleExportImageClick}
                 icon={Camera}
                 label={t.exportImage}
                 compact
+                iconOnly
               />
             </div>
 
@@ -1218,20 +1225,27 @@ export default function LayerCal() {
 }
 
 /** Header action: icon-only from md, icon plus label from lg. */
-function ActionButton({ onClick, icon: Icon, label, primary, compact }) {
+function ActionButton({ onClick, icon: Icon, label, primary, compact, iconOnly }) {
   const base = primary
     ? 'border-accent/40 bg-accent-soft text-accent hover:bg-accent hover:text-primary-foreground'
     : 'border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground';
 
   if (compact) {
+    // Three labelled buttons do not fit across a phone: at 390px the row needs
+    // about 420px, so every label was truncated to an ellipsis - and in German
+    // or Portuguese it is worse. The one action worth naming keeps its label and
+    // the width left over; the two exports fall back to their icons, which is
+    // what the row above already does between md and lg.
+    const shape = iconOnly ? 'flex-shrink-0 px-3' : 'min-w-0 flex-1 px-2';
     return (
       <button
         onClick={onClick}
         aria-label={label}
-        className={`press flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium ${base}`}
+        title={label}
+        className={`press flex ${shape} items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-medium ${base}`}
       >
         <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-        <span className="truncate">{label}</span>
+        {!iconOnly && <span className="truncate">{label}</span>}
       </button>
     );
   }
